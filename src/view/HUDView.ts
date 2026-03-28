@@ -1,6 +1,5 @@
 import { Container, Text, TextStyle, Graphics, Ticker } from "pixi.js";
 import { GameConfig } from "../data/GameConfig";
-import { Random } from "../utils/Random";
 
 export class HUDView extends Container {
   private skipContainer: Container;
