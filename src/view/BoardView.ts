@@ -297,9 +297,15 @@ export class BoardView extends Container {
     this.screenWidth = width;
     this.screenHeight = height;
 
-    const baseWidth = 1200;
-    const baseHeight = 800;
-    this.globalScale = Math.min(width / baseWidth, height / baseHeight, 1.5);
+    const isPortrait = width < height;
+
+    if (isPortrait) {
+      this.globalScale = Math.min(width / 380, height / 950, 1.8);
+    } else {
+      const baseWidth = 1200;
+      const baseHeight = 800;
+      this.globalScale = Math.min(width / baseWidth, height / baseHeight, 1.5);
+    }
 
     this.helpModal.resize(width, height);
     this.updateLayout();
@@ -1011,42 +1017,79 @@ export class BoardView extends Container {
   private updateLayout(): void {
     const centerX = this.screenWidth / 2;
     const centerY = this.screenHeight / 2;
-    const spacing = (GameConfig.card.width + 20) * this.globalScale;
+    const isPortrait = this.screenWidth < this.screenHeight;
 
-    const sideOffset = Math.max(
-      spacing * 2.5,
-      this.screenWidth / 2 - GameConfig.card.width * this.globalScale * 1.2,
-    );
+    const cardW = GameConfig.card.width * this.globalScale;
+    const cardH = GameConfig.card.height * this.globalScale;
+    const spacingX = cardW + 20 * this.globalScale;
+    const spacingY = cardH + 20 * this.globalScale;
 
     if (!this.isGameOverAnimating) {
-      this.healthView.position.set(
-        160 * this.globalScale,
-        this.screenHeight - 160 * this.globalScale,
-      );
-      this.healthView.scale.set(this.globalScale);
+      if (isPortrait) {
+        this.healthView.position.set(
+          70 * this.globalScale,
+          this.screenHeight - 80 * this.globalScale,
+        );
+        this.healthView.scale.set(this.globalScale * 0.5);
+      } else {
+        this.healthView.position.set(
+          160 * this.globalScale,
+          this.screenHeight - 160 * this.globalScale,
+        );
+        this.healthView.scale.set(this.globalScale);
+      }
     }
 
-    this.hudView.resize(
-      this.screenWidth,
-      this.screenHeight,
-      this.globalScale,
-      centerX,
-      centerY - spacing * 1.8,
-    );
+    const portraitHudY = cardH * 0.65;
+    const portraitRoomStartY = portraitHudY + spacingY * 0.85;
+    const portraitWeaponY =
+      portraitRoomStartY + spacingY * 1.0 + spacingY * 1.05;
+
+    if (isPortrait) {
+      this.hudView.resize(
+        this.screenWidth,
+        this.screenHeight,
+        this.globalScale * 1.3,
+        centerX,
+        portraitHudY,
+      );
+    } else {
+      this.hudView.resize(
+        this.screenWidth,
+        this.screenHeight,
+        this.globalScale,
+        centerX,
+        centerY - spacingY * 1.5,
+      );
+    }
 
     let z = 10;
 
+    let deckX, deckY, discardX, discardY;
+    if (isPortrait) {
+      deckX = cardW * 0.1;
+      deckY = cardH * 0.5;
+      discardX = this.screenWidth - cardW * 0.1;
+      discardY = cardH * 0.5;
+    } else {
+      const sideOffset = Math.max(
+        spacingX * 2.5,
+        this.screenWidth / 2 - cardW * 1.2,
+      );
+      deckX = centerX - sideOffset;
+      deckY = centerY - spacingY * 1.2;
+      discardX = centerX + sideOffset;
+      discardY = centerY - spacingY * 1.2;
+    }
+
     this.deck.forEach((card, i) => {
       card.globalScale = this.globalScale;
-      card.targetX = centerX - sideOffset;
-      card.targetY = centerY - spacing * 1.5 - i * 0.5;
+      card.targetX = deckX;
+      card.targetY = deckY - i * 0.5;
       card.targetRotation = 0;
       card.zIndex = z++;
       card.setShadowVisible(i === 0);
     });
-
-    const discardX = centerX + sideOffset;
-    const discardY = centerY - spacing * 1.5;
 
     this.discard.forEach((card, i) => {
       card.globalScale = this.globalScale;
@@ -1057,39 +1100,60 @@ export class BoardView extends Container {
       card.setShadowVisible(i === 0);
     });
 
+    if (isPortrait) {
+      this.deckCountText.position.set(
+        deckX + cardW * 0.35,
+        deckY + cardH / 2 + 10,
+      );
+      this.discardCountText.position.set(
+        discardX - cardW * 0.35,
+        discardY + cardH / 2 + 10,
+      );
+    } else {
+      this.deckCountText.position.set(deckX, deckY + cardH / 2 + 10);
+      this.discardCountText.position.set(discardX, discardY + cardH / 2 + 10);
+    }
+
     this.deckCountText.text = `${this.deck.length}`;
     this.deckCountText.visible = this.deck.length > 0;
-    this.deckCountText.position.set(
-      centerX - sideOffset,
-      centerY -
-        spacing * 1.5 +
-        (GameConfig.card.height / 2) * this.globalScale +
-        10,
-    );
     this.deckCountText.scale.set(this.globalScale);
 
     this.discardCountText.text = `${this.discard.length}`;
     this.discardCountText.visible = this.discard.length > 0;
-    this.discardCountText.position.set(
-      discardX,
-      discardY + (GameConfig.card.height / 2) * this.globalScale + 10,
-    );
     this.discardCountText.scale.set(this.globalScale);
 
-    const roomStartX = centerX - spacing * 1.5;
     this.room.forEach((card, i) => {
       card.globalScale = this.globalScale;
-      card.targetX = roomStartX + i * spacing;
-      card.targetY = centerY - spacing * 0.5;
+      if (isPortrait) {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        card.targetX =
+          centerX + (col === 0 ? -spacingX * 0.55 : spacingX * 0.55);
+        card.targetY = portraitRoomStartY + row * spacingY * 1.0;
+      } else {
+        const roomStartX = centerX - spacingX * 1.5;
+        card.targetX = roomStartX + i * spacingX;
+        card.targetY = centerY - spacingY * 0.2;
+      }
       card.targetRotation = 0;
       card.zIndex = card === this.focusedCard ? 300 : z++;
       card.setShadowVisible(true);
     });
 
-    const weaponBaseX = centerX;
-    const weaponBaseY = centerY + spacing * 1.2;
+    let weaponBaseX, weaponBaseY, fistsX, fistsY;
+    if (isPortrait) {
+      weaponBaseX = centerX - spacingX * 0.55;
+      weaponBaseY = portraitWeaponY;
+      fistsX = centerX + spacingX * 0.55;
+      fistsY = weaponBaseY;
+    } else {
+      weaponBaseX = centerX;
+      weaponBaseY = centerY + spacingY * 1.1;
+      fistsX = weaponBaseX + spacingX * 1.5;
+      fistsY = weaponBaseY;
+    }
 
-    this.fistsZone.position.set(weaponBaseX + spacing * 1.5, weaponBaseY);
+    this.fistsZone.position.set(fistsX, fistsY);
     this.fistsZone.scale.set(this.globalScale);
     this.fistsZone.zIndex = 300;
 
@@ -1104,9 +1168,10 @@ export class BoardView extends Container {
 
     if (this.weapon) {
       let targetWeaponX = weaponBaseX;
+      let targetWeaponY = weaponBaseY;
 
       if (this.hoveredWeapon) {
-        targetWeaponX = weaponBaseX + spacing * 1.2;
+        targetWeaponX = fistsX;
         this.weapon.setDiscardIconVisible(true);
       } else {
         this.weapon.setDiscardIconVisible(false);
@@ -1118,7 +1183,7 @@ export class BoardView extends Container {
           targetWeaponX +
           ((GameConfig.card.height - GameConfig.card.width) / 2) *
             this.globalScale;
-        card.targetY = weaponBaseY;
+        card.targetY = targetWeaponY;
         card.targetRotation = Math.PI / 2;
         card.zIndex = z++;
         card.setShadowVisible(i === 0);
@@ -1126,7 +1191,7 @@ export class BoardView extends Container {
 
       this.weapon.globalScale = this.globalScale;
       this.weapon.targetX = targetWeaponX;
-      this.weapon.targetY = weaponBaseY;
+      this.weapon.targetY = targetWeaponY;
       this.weapon.targetRotation = 0;
 
       const isWeaponTargetable =
@@ -1139,7 +1204,6 @@ export class BoardView extends Container {
 
     if (this.scoringMonsters.length > 0) {
       const total = this.scoringMonsters.length;
-      const cardW = GameConfig.card.width * this.globalScale;
       const maxW = this.screenWidth * 0.8;
       const overlapSpacing = Math.min(
         cardW + 10,

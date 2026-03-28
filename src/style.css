@@ -8,10 +8,17 @@ body {
   background-color: #1a1a1a;
   font-family: "Outfit", sans-serif;
   color: white;
+
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
 }
 
 canvas {
   display: block;
   width: 100vw;
   height: 100vh;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
