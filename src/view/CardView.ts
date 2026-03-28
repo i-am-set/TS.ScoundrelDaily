@@ -35,7 +35,6 @@ export class CardView extends Container {
   private isFlipping: boolean = false;
   private isFocused: boolean = false;
   private isSelectable: boolean = true;
-  private isForceHovered: boolean = false;
 
   constructor(data: CardData) {
     super();
@@ -306,21 +305,6 @@ export class CardView extends Container {
     }
   }
 
-  public setForceHover(force: boolean): void {
-    this.isForceHovered = force;
-    if (force) {
-      this.hoverGlow.visible = true;
-      this.targetScale = GameConfig.juice.scaleHover ?? 1.05;
-      this.targetShadowY = GameConfig.juice.shadowYHover ?? 16;
-      this.targetShadowAlpha = GameConfig.juice.shadowAlphaHover ?? 0.2;
-    } else {
-      this.hoverGlow.visible = false;
-      this.targetScale = GameConfig.juice.scaleNormal ?? 1.0;
-      this.targetShadowY = GameConfig.juice.shadowYNormal ?? 8;
-      this.targetShadowAlpha = GameConfig.juice.shadowAlphaNormal ?? 0.4;
-    }
-  }
-
   private onPointerEnter(): void {
     if (!this.isSelectable || this.isFocused) return;
     this.hoverGlow.visible = true;
@@ -331,7 +315,6 @@ export class CardView extends Container {
   }
 
   private onPointerLeave(): void {
-    if (this.isForceHovered) return;
     this.hoverGlow.visible = false;
     if (!this.isSelectable || this.isFocused) return;
     this.targetScale = GameConfig.juice.scaleNormal ?? 1.0;
