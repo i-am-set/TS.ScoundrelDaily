@@ -1,0 +1,1010 @@
+import { Container, Text, TextStyle, Graphics } from "pixi.js";
+import { CardView } from "./CardView";
+import { GameConfig } from "../data/GameConfig";
+
+export class BoardView extends Container {
+  private deck: CardView[] = [];
+  private room: CardView[] = [];
+  private discard: CardView[] = [];
+  private weapon: CardView | null = null;
+  private slain: CardView[] = [];
+  private scoringMonsters: CardView[] = [];
+
+  private health: number = 20;
+  private roomCount: number = 0;
+  private cardsPlayedThisTurn: number = 0;
+  private potionsUsedThisTurn: number = 0;
+  private canAvoid: boolean = true;
+  private lastSlainValue: number = 99;
+  private gameState: "playing" | "scoring" | "gameover" = "playing";
+  private isGameOverAnimating: boolean = false;
+
+  private screenWidth: number = 0;
+  private screenHeight: number = 0;
+  private globalScale: number = 1;
+
+  private hpContainer: Container;
+  private hpLabelText: Text;
+  private hpValueText: Text;
+  private hpPreviewText: Text;
+
+  private skipContainer: Container;
+  private skipBtnBg: Graphics;
+  private skipText: Text;
+  private roomText: Text;
+  private skipStrikethrough: Graphics;
+
+  private overlay: Graphics;
+  private focusedCard: CardView | null = null;
+  private fistsZone: Container;
+
+  private deckCountText: Text;
+  private discardCountText: Text;
+
+  constructor() {
+    super();
+    this.sortableChildren = true;
+
+    this.overlay = new Graphics()
+      .rect(0, 0, 10000, 10000)
+      .fill({ color: GameConfig.colors.ui.overlay, alpha: 0.7 });
+    this.overlay.eventMode = "static";
+    this.overlay.visible = false;
+    this.overlay.on("pointerdown", () => this.clearFocus());
+    this.addChild(this.overlay);
+
+    this.hpContainer = new Container();
+    this.hpContainer.zIndex = 500;
+
+    this.hpLabelText = new Text({
+      text: "HP",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 48,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+        letterSpacing: 2,
+        stroke: { color: 0x000000, width: 6 },
+      }),
+    });
+    this.hpLabelText.anchor.set(0.5, 1);
+    this.hpLabelText.y = -65;
+    this.hpContainer.addChild(this.hpLabelText);
+
+    this.hpValueText = new Text({
+      text: "20",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 128,
+        fontWeight: "900",
+        fill: GameConfig.colors.ui.healthGreen,
+        stroke: { color: 0x000000, width: 8 },
+      }),
+    });
+    this.hpValueText.anchor.set(0.5, 0.5);
+    this.hpContainer.addChild(this.hpValueText);
+
+    this.hpPreviewText = new Text({
+      text: "",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 40,
+        fontWeight: "bold",
+        fill: GameConfig.colors.ui.healthGreen,
+        stroke: { color: 0x000000, width: 5 },
+      }),
+    });
+    this.hpPreviewText.anchor.set(0.5, 0);
+    this.hpPreviewText.y = 65;
+    this.hpContainer.addChild(this.hpPreviewText);
+
+    this.addChild(this.hpContainer);
+
+    this.skipContainer = new Container();
+
+    this.roomText = new Text({
+      text: "ROOM: 1",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 20,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+        letterSpacing: 2,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    this.roomText.anchor.set(0.5, 1);
+    this.roomText.y = -35;
+    this.skipContainer.addChild(this.roomText);
+
+    this.skipBtnBg = new Graphics()
+      .roundRect(-100, -25, 200, 50, 8)
+      .fill({ color: GameConfig.colors.ui.buttonBg, alpha: 1 })
+      .stroke({ width: 2, color: GameConfig.colors.ui.avoidActive });
+    this.skipBtnBg.eventMode = "static";
+    this.skipBtnBg.cursor = "pointer";
+    this.skipBtnBg.on("pointerdown", () => this.onAvoidClicked());
+    this.skipBtnBg.on("pointerenter", () => {
+      if (this.skipBtnBg.eventMode === "static") {
+        this.skipBtnBg
+          .clear()
+          .roundRect(-100, -25, 200, 50, 8)
+          .fill({ color: GameConfig.colors.ui.buttonHover, alpha: 1 })
+          .stroke({ width: 2, color: GameConfig.colors.ui.avoidActive });
+      }
+    });
+    this.skipBtnBg.on("pointerleave", () => {
+      if (this.skipBtnBg.eventMode === "static") {
+        this.skipBtnBg
+          .clear()
+          .roundRect(-100, -25, 200, 50, 8)
+          .fill({ color: GameConfig.colors.ui.buttonBg, alpha: 1 })
+          .stroke({ width: 2, color: GameConfig.colors.ui.avoidActive });
+      }
+    });
+    this.skipContainer.addChild(this.skipBtnBg);
+
+    this.skipText = new Text({
+      text: "SKIP ROOM",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 20,
+        fontWeight: "900",
+        fill: GameConfig.colors.ui.avoidActive,
+        letterSpacing: 2,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    this.skipText.anchor.set(0.5);
+    this.skipContainer.addChild(this.skipText);
+
+    this.skipStrikethrough = new Graphics()
+      .moveTo(-80, 0)
+      .lineTo(80, 0)
+      .stroke({ width: 4, color: GameConfig.colors.ui.avoidDisabled });
+    this.skipStrikethrough.visible = false;
+    this.skipContainer.addChild(this.skipStrikethrough);
+
+    this.addChild(this.skipContainer);
+
+    this.fistsZone = this.createTargetZone("FISTS");
+    this.fistsZone.on("pointerdown", () => this.onFistsZoneClicked());
+    this.fistsZone.on("pointerenter", () => this.onFistsHoverEnter());
+    this.fistsZone.on("pointerleave", () => this.onFistsHoverLeave());
+    this.addChild(this.fistsZone);
+
+    this.deckCountText = new Text({
+      text: "0",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 24,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    this.deckCountText.anchor.set(0.5, 0);
+    this.addChild(this.deckCountText);
+
+    this.discardCountText = new Text({
+      text: "0",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 24,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    this.discardCountText.anchor.set(0.5, 0);
+    this.addChild(this.discardCountText);
+  }
+
+  private createTargetZone(label: string): Container {
+    const container = new Container();
+    const g = new Graphics();
+    const w = GameConfig.card.width;
+    const h = GameConfig.card.height;
+    const dash = 12;
+    const gap = 8;
+
+    g.moveTo(-w / 2, -h / 2);
+    for (let x = -w / 2; x < w / 2; x += dash + gap) {
+      g.lineTo(Math.min(x + dash, w / 2), -h / 2);
+      g.moveTo(Math.min(x + dash + gap, w / 2), -h / 2);
+    }
+    for (let y = -h / 2; y < h / 2; y += dash + gap) {
+      g.lineTo(w / 2, Math.min(y + dash, h / 2));
+      g.moveTo(w / 2, Math.min(y + dash + gap, h / 2));
+    }
+    for (let x = w / 2; x > -w / 2; x -= dash + gap) {
+      g.lineTo(Math.max(x - dash, -w / 2), h / 2);
+      g.moveTo(Math.max(x - dash - gap, -w / 2), h / 2);
+    }
+    for (let y = h / 2; y > -h / 2; y -= dash + gap) {
+      g.lineTo(-w / 2, Math.max(y - dash, -h / 2));
+      g.moveTo(-w / 2, Math.max(y - dash - gap, -h / 2));
+    }
+    g.stroke({ width: 4, color: GameConfig.colors.ui.highlight, alpha: 1 });
+    container.addChild(g);
+
+    if (label) {
+      const text = new Text({
+        text: label,
+        style: new TextStyle({
+          fontFamily: "Arial",
+          fontSize: 24,
+          fontWeight: "bold",
+          fill: GameConfig.colors.ui.highlight,
+          stroke: { color: 0x000000, width: 4 },
+        }),
+      });
+      text.anchor.set(0.5);
+      container.addChild(text);
+    }
+
+    container.visible = false;
+    container.eventMode = "static";
+    container.cursor = "pointer";
+
+    const hitArea = new Graphics()
+      .rect(-w / 2, -h / 2, w, h)
+      .fill({ color: 0xffffff, alpha: 0.001 });
+    container.addChild(hitArea);
+
+    return container;
+  }
+
+  public initCards(cards: CardView[]): void {
+    this.deck = cards;
+
+    for (let i = this.deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
+    }
+
+    this.deck.forEach((card) => {
+      this.addChild(card);
+      card.on("cardClicked", () => this.onCardClicked(card));
+      card.on("hoverEnter", () => this.onCardHoverEnter(card));
+      card.on("hoverLeave", () => this.onCardHoverLeave(card));
+      card.position.set(-500, -500);
+    });
+
+    this.dealRoom();
+  }
+
+  public resize(width: number, height: number): void {
+    this.screenWidth = width;
+    this.screenHeight = height;
+
+    const baseWidth = 1200;
+    const baseHeight = 800;
+    this.globalScale = Math.min(width / baseWidth, height / baseHeight, 1.5);
+
+    this.updateLayout();
+  }
+
+  private dealRoom(): void {
+    while (this.room.length < 4 && this.deck.length > 0) {
+      const card = this.deck.pop()!;
+      this.room.push(card);
+      card.flip(true);
+    }
+    this.roomCount++;
+    this.roomText.text = `ROOM: ${this.roomCount}`;
+    this.cardsPlayedThisTurn = 0;
+    this.potionsUsedThisTurn = 0;
+    this.updateAvoidButtonState();
+    this.updateSelectableStates();
+    this.updateLayout();
+  }
+
+  private updateAvoidButtonState(): void {
+    const isFullRoom = this.room.length === 4;
+    const hasNotPlayed = this.cardsPlayedThisTurn === 0;
+    const isEnabled = this.canAvoid && isFullRoom && hasNotPlayed;
+
+    this.skipBtnBg.eventMode = isEnabled ? "static" : "none";
+    this.skipBtnBg.cursor = isEnabled ? "pointer" : "default";
+
+    this.skipBtnBg
+      .clear()
+      .roundRect(-100, -25, 200, 50, 8)
+      .fill({ color: GameConfig.colors.ui.buttonBg, alpha: 1 })
+      .stroke({
+        width: 2,
+        color: isEnabled
+          ? GameConfig.colors.ui.avoidActive
+          : GameConfig.colors.ui.avoidDisabled,
+      });
+
+    this.skipText.style.fill = isEnabled
+      ? GameConfig.colors.ui.avoidActive
+      : GameConfig.colors.ui.avoidDisabled;
+    this.skipStrikethrough.visible = !isEnabled;
+  }
+
+  private updateSelectableStates(): void {
+    if (this.gameState !== "playing") return;
+
+    this.deck.forEach((c) => c.setSelectable(false));
+    this.discard.forEach((c) => c.setSelectable(false));
+    this.slain.forEach((c) => c.setSelectable(false));
+
+    if (this.weapon) {
+      if (
+        this.focusedCard &&
+        this.focusedCard.data.type === "monster" &&
+        this.focusedCard.data.value < this.lastSlainValue
+      ) {
+        this.weapon.setSelectable(true);
+      } else {
+        this.weapon.setSelectable(false);
+      }
+    }
+
+    this.room.forEach((c) => {
+      if (this.focusedCard) {
+        c.setSelectable(c === this.focusedCard);
+      } else {
+        c.setSelectable(true);
+      }
+    });
+  }
+
+  private onAvoidClicked(): void {
+    if (
+      this.gameState !== "playing" ||
+      !this.canAvoid ||
+      this.room.length < 4 ||
+      this.cardsPlayedThisTurn > 0
+    )
+      return;
+
+    this.canAvoid = false;
+
+    for (let i = this.room.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.room[i], this.room[j]] = [this.room[j], this.room[i]];
+    }
+
+    this.room.forEach((c) => c.flip(false));
+    this.deck.unshift(...this.room);
+    this.room = [];
+
+    this.dealRoom();
+  }
+
+  private onFistsHoverEnter(): void {
+    if (!this.focusedCard || this.focusedCard.data.type !== "monster") return;
+    const damage = this.focusedCard.data.value;
+    this.focusedCard.setPreview(`-${damage}`, GameConfig.colors.ui.healthRed);
+    this.hpPreviewText.text = `-${damage}`;
+    this.hpPreviewText.style.fill = GameConfig.colors.ui.healthRed;
+  }
+
+  private onFistsHoverLeave(): void {
+    if (!this.focusedCard) return;
+    this.focusedCard.setPreview("", 0);
+    this.hpPreviewText.text = "";
+  }
+
+  private onCardHoverEnter(card: CardView): void {
+    if (this.gameState !== "playing") return;
+
+    if (this.focusedCard && card === this.weapon) {
+      if (
+        this.focusedCard.data.type === "monster" &&
+        this.focusedCard.data.value < this.lastSlainValue
+      ) {
+        const damage = Math.max(
+          0,
+          this.focusedCard.data.value - this.weapon.data.value,
+        );
+        const color =
+          damage > 0
+            ? GameConfig.colors.ui.healthRed
+            : GameConfig.colors.ui.healthGray;
+        this.focusedCard.setPreview(`-${damage}`, color);
+        this.hpPreviewText.text = `-${damage}`;
+        this.hpPreviewText.style.fill = color;
+      }
+      return;
+    }
+
+    if (this.focusedCard) return;
+    if (!this.room.includes(card)) return;
+
+    if (card.data.type === "monster") {
+      card.setPreview(`-${card.data.value}`, GameConfig.colors.ui.healthRed);
+      this.hpPreviewText.text = `-${card.data.value}`;
+      this.hpPreviewText.style.fill = GameConfig.colors.ui.healthRed;
+
+      if (this.weapon && !this.focusedCard) {
+        if (card.data.value < this.lastSlainValue) {
+          this.weapon.setHighlight(true, GameConfig.colors.ui.healthGreen);
+        } else {
+          this.weapon.setHighlight(true, GameConfig.colors.ui.healthRed);
+        }
+      }
+    } else if (card.data.type === "potion") {
+      if (this.potionsUsedThisTurn >= 1) {
+        card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
+        this.hpPreviewText.text = `+0`;
+        this.hpPreviewText.style.fill = GameConfig.colors.ui.healthGray;
+      } else {
+        const gained = Math.min(card.data.value, 20 - this.health);
+        if (gained === 0) {
+          card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
+          this.hpPreviewText.text = `+0`;
+          this.hpPreviewText.style.fill = GameConfig.colors.ui.healthGray;
+        } else if (gained < card.data.value) {
+          card.setPreview(`+${gained}`, GameConfig.colors.ui.healthOrange);
+          this.hpPreviewText.text = `+${gained}`;
+          this.hpPreviewText.style.fill = GameConfig.colors.ui.healthOrange;
+        } else {
+          card.setPreview(`+${gained}`, GameConfig.colors.ui.healthGreen);
+          this.hpPreviewText.text = `+${gained}`;
+          this.hpPreviewText.style.fill = GameConfig.colors.ui.healthGreen;
+        }
+      }
+    }
+  }
+
+  private onCardHoverLeave(card: CardView): void {
+    if (this.focusedCard && card === this.weapon) {
+      this.focusedCard.setPreview("", 0);
+      this.hpPreviewText.text = "";
+      return;
+    }
+
+    if (this.focusedCard) return;
+
+    card.setPreview("", 0);
+    this.hpPreviewText.text = "";
+
+    if (this.weapon && !this.focusedCard) {
+      this.weapon.setHighlight(false);
+    }
+  }
+
+  private onCardClicked(card: CardView): void {
+    if (this.gameState !== "playing") return;
+
+    if (this.room.includes(card)) {
+      if (this.focusedCard === card) {
+        this.clearFocus();
+        return;
+      }
+
+      if (card.data.type === "potion") {
+        this.usePotion(card);
+      } else if (card.data.type === "weapon") {
+        this.equipWeapon(card);
+      } else if (card.data.type === "monster") {
+        if (!this.weapon || card.data.value >= this.lastSlainValue) {
+          this.fightBarehanded(card);
+        } else {
+          this.focusCard(card);
+        }
+      }
+      return;
+    }
+
+    if (this.focusedCard && this.weapon === card) {
+      if (
+        this.focusedCard.data.type === "monster" &&
+        this.focusedCard.data.value < this.lastSlainValue
+      ) {
+        this.fightWithWeapon(this.focusedCard);
+      }
+    }
+  }
+
+  private focusCard(card: CardView): void {
+    if (this.focusedCard) {
+      const old = this.focusedCard;
+      this.focusedCard = null;
+      this.onCardHoverLeave(old);
+      old.setFocused(false);
+    }
+
+    this.focusedCard = card;
+    this.focusedCard.setFocused(true);
+
+    card.setPreview("", 0);
+    this.hpPreviewText.text = "";
+
+    this.overlay.visible = true;
+    this.overlay.zIndex = 200;
+
+    this.fistsZone.visible = true;
+    if (this.weapon && card.data.value < this.lastSlainValue) {
+      this.weapon.setHighlight(true, GameConfig.colors.ui.highlight);
+    }
+
+    this.updateSelectableStates();
+    this.updateLayout();
+  }
+
+  private clearFocus(): void {
+    if (!this.focusedCard) return;
+
+    const old = this.focusedCard;
+    this.focusedCard = null;
+    this.onCardHoverLeave(old);
+    old.setFocused(false);
+
+    this.overlay.visible = false;
+    this.fistsZone.visible = false;
+
+    if (this.weapon) {
+      this.weapon.setHighlight(false);
+    }
+
+    this.updateSelectableStates();
+    this.updateLayout();
+  }
+
+  private onFistsZoneClicked(): void {
+    if (!this.focusedCard) return;
+
+    if (this.focusedCard.data.type === "monster") {
+      this.fightBarehanded(this.focusedCard);
+    }
+  }
+
+  private usePotion(card: CardView): void {
+    if (this.potionsUsedThisTurn < 1) {
+      this.health = Math.min(20, this.health + card.data.value);
+      this.potionsUsedThisTurn++;
+    }
+    this.discardCard(card);
+    this.advanceTurn();
+  }
+
+  private equipWeapon(card: CardView): void {
+    if (this.weapon) {
+      this.weapon.setHighlight(false);
+      this.discard.push(this.weapon, ...this.slain);
+      this.slain = [];
+    }
+    this.room = this.room.filter((c) => c !== card);
+    card.setPreview("", 0);
+    this.hpPreviewText.text = "";
+    this.weapon = card;
+    this.lastSlainValue = 99;
+    this.advanceTurn();
+  }
+
+  private fightBarehanded(card: CardView): void {
+    this.health -= card.data.value;
+    this.discardCard(card);
+    this.advanceTurn();
+  }
+
+  private fightWithWeapon(card: CardView): void {
+    if (!this.weapon || card.data.value >= this.lastSlainValue) return;
+
+    const damage = Math.max(0, card.data.value - this.weapon.data.value);
+    this.health -= damage;
+    this.lastSlainValue = card.data.value;
+
+    this.room = this.room.filter((c) => c !== card);
+    card.setPreview("", 0);
+    this.hpPreviewText.text = "";
+    this.slain.push(card);
+
+    if (card.data.value === 2) {
+      this.weapon.setHighlight(false);
+      this.discard.push(this.weapon, ...this.slain);
+      this.weapon = null;
+      this.slain = [];
+    }
+
+    this.advanceTurn();
+  }
+
+  private discardCard(card: CardView): void {
+    this.room = this.room.filter((c) => c !== card);
+    card.setPreview("", 0);
+    this.hpPreviewText.text = "";
+    this.discard.push(card);
+  }
+
+  private hasMonstersLeft(): boolean {
+    return [...this.deck, ...this.room].some((c) => c.data.type === "monster");
+  }
+
+  private updateHealthUI(): void {
+    if (this.gameState === "scoring" || this.gameState === "gameover") return;
+    this.hpValueText.text = `${this.health}`;
+    if (this.health > 13) {
+      this.hpValueText.style.fill = GameConfig.colors.ui.healthGreen;
+    } else if (this.health > 6) {
+      this.hpValueText.style.fill = GameConfig.colors.ui.healthOrange;
+    } else {
+      this.hpValueText.style.fill = GameConfig.colors.ui.healthRed;
+    }
+  }
+
+  private advanceTurn(): void {
+    if (this.gameState !== "playing") return;
+
+    this.clearFocus();
+    this.cardsPlayedThisTurn++;
+    this.canAvoid = true;
+    this.updateAvoidButtonState();
+    this.updateHealthUI();
+
+    if (this.health <= 0) {
+      this.triggerDefeat();
+    } else if (!this.hasMonstersLeft()) {
+      this.triggerVictory();
+    } else if (this.room.length === 1 && this.deck.length > 0) {
+      this.dealRoom();
+    } else {
+      this.updateSelectableStates();
+      this.updateLayout();
+    }
+  }
+
+  private async triggerDefeat(): Promise<void> {
+    this.gameState = "scoring";
+    this.room.forEach((c) => c.setSelectable(false));
+    this.deck.forEach((c) => c.setSelectable(false));
+    this.skipContainer.visible = false;
+
+    if (this.weapon) {
+      this.weapon.setHighlight(false);
+      this.discard.push(this.weapon, ...this.slain);
+      this.weapon = null;
+      this.slain = [];
+    }
+
+    this.room.forEach((c) => c.flip(false));
+    this.deck.unshift(...this.room);
+    this.room = [];
+
+    this.updateLayout();
+
+    await new Promise((r) =>
+      setTimeout(r, GameConfig.juice.scoringDelayStart ?? 125),
+    );
+
+    let finalScore = this.health;
+
+    while (this.deck.length > 0) {
+      const card = this.deck.pop()!;
+      if (card.data.type === "monster") {
+        this.scoringMonsters.push(card);
+        card.flip(true);
+        finalScore -= card.data.value;
+        this.updateLayout();
+        await new Promise((r) =>
+          setTimeout(r, GameConfig.juice.scoringDelayMonster ?? 75),
+        );
+      } else {
+        this.discard.push(card);
+        this.updateLayout();
+        await new Promise((r) =>
+          setTimeout(r, GameConfig.juice.scoringDelayDiscard ?? 25),
+        );
+      }
+    }
+
+    this.playGameOverAnimation("DEFEAT", this.health, finalScore);
+  }
+
+  private triggerVictory(): void {
+    this.gameState = "scoring";
+    this.room.forEach((c) => c.setSelectable(false));
+    this.skipContainer.visible = false;
+
+    let finalScore = this.health;
+    if (this.health === 20) {
+      const potions = this.room.filter((c) => c.data.type === "potion");
+      if (potions.length > 0) {
+        finalScore += Math.max(...potions.map((p) => p.data.value));
+      }
+    }
+
+    if (this.weapon) {
+      this.weapon.setHighlight(false);
+      this.discard.push(this.weapon, ...this.slain);
+      this.weapon = null;
+      this.slain = [];
+    }
+
+    this.room.forEach((c) => c.flip(false));
+    this.deck.unshift(...this.room);
+    this.room = [];
+
+    this.updateLayout();
+
+    this.playGameOverAnimation("VICTORY", this.health, finalScore);
+  }
+
+  private async tween(
+    target: any,
+    props: Record<string, number>,
+    duration: number,
+    easing: (t: number) => number = (t) => t,
+    onUpdate?: () => void,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const startProps: Record<string, number> = {};
+      for (const key in props) startProps[key] = target[key];
+      const startTime = performance.now();
+
+      const update = () => {
+        const elapsed = performance.now() - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        const e = easing(t);
+
+        for (const key in props) {
+          target[key] = startProps[key] + (props[key] - startProps[key]) * e;
+        }
+
+        if (onUpdate) onUpdate();
+
+        if (t < 1) {
+          requestAnimationFrame(update);
+        } else {
+          resolve();
+        }
+      };
+      requestAnimationFrame(update);
+    });
+  }
+
+  private async playGameOverAnimation(
+    result: string,
+    startScore: number,
+    finalScore: number,
+  ): Promise<void> {
+    this.gameState = "gameover";
+    this.isGameOverAnimating = true;
+
+    this.hpLabelText.visible = false;
+    this.hpPreviewText.visible = false;
+    this.hpContainer.zIndex = 1000;
+
+    const cx = this.screenWidth / 2;
+    const cy = this.screenHeight / 2;
+
+    const easeOutQuad = (t: number) => t * (2 - t);
+    const easeInExpo = (t: number) => (t === 0 ? 0 : Math.pow(2, 10 * t - 10));
+    const easeOutBack = (t: number) => {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    };
+
+    const scoreObj = { val: startScore };
+    const totalDuration = 600 + 400 + 150;
+
+    this.tween(
+      scoreObj,
+      { val: finalScore },
+      totalDuration,
+      (t) => t,
+      () => {
+        const currentScore = Math.round(scoreObj.val);
+        this.hpValueText.text = `${currentScore}`;
+        if (currentScore > 13) {
+          this.hpValueText.style.fill = GameConfig.colors.ui.healthGreen;
+        } else if (currentScore > 6) {
+          this.hpValueText.style.fill = GameConfig.colors.ui.healthOrange;
+        } else {
+          this.hpValueText.style.fill = GameConfig.colors.ui.healthRed;
+        }
+      },
+    );
+
+    await this.tween(this.hpContainer, { x: cx, y: cy }, 600, easeOutQuad);
+
+    await this.tween(
+      this.hpContainer.scale,
+      { x: this.globalScale * 2.5, y: this.globalScale * 2.5 },
+      400,
+      easeOutQuad,
+    );
+
+    this.overlay
+      .clear()
+      .rect(0, 0, 10000, 10000)
+      .fill({ color: GameConfig.colors.ui.overlay, alpha: 1 });
+    this.overlay.alpha = 0;
+    this.overlay.visible = true;
+    this.overlay.zIndex = 900;
+
+    const slamPromise = this.tween(
+      this.hpContainer.scale,
+      { x: this.globalScale * 0.7, y: this.globalScale * 0.7 },
+      150,
+      easeInExpo,
+    );
+
+    const overlayPromise = this.tween(
+      this.overlay,
+      { alpha: 0.95 },
+      200,
+      easeOutQuad,
+    );
+
+    await Promise.all([slamPromise, overlayPromise]);
+
+    const scoreLabel = new Text({
+      text: "SCORE",
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 32,
+        fontWeight: "bold",
+        fill: 0xffffff,
+        letterSpacing: 4,
+        stroke: { color: 0x000000, width: 6 },
+      }),
+    });
+    scoreLabel.anchor.set(0.5);
+    scoreLabel.position.set(cx, cy - 100 * this.globalScale);
+    scoreLabel.zIndex = 1000;
+    this.addChild(scoreLabel);
+
+    const resultText = new Text({
+      text: result,
+      style: new TextStyle({
+        fontFamily: "Arial",
+        fontSize: 80,
+        fontWeight: "900",
+        fill:
+          result === "VICTORY"
+            ? GameConfig.colors.ui.healthGreen
+            : GameConfig.colors.ui.healthRed,
+        align: "center",
+        stroke: { color: 0x000000, width: 8 },
+        dropShadow: { alpha: 0.5, blur: 4, color: 0x000000, distance: 4 },
+        letterSpacing: 8,
+      }),
+    });
+    resultText.anchor.set(0.5);
+    resultText.position.set(cx, cy - 180 * this.globalScale);
+    resultText.zIndex = 1000;
+    this.addChild(resultText);
+
+    await this.tween(
+      this.hpContainer.scale,
+      { x: this.globalScale * 1.2, y: this.globalScale * 1.2 },
+      800,
+      easeOutBack,
+    );
+  }
+
+  private updateLayout(): void {
+    const centerX = this.screenWidth / 2;
+    const centerY = this.screenHeight / 2;
+    const spacing = (GameConfig.card.width + 20) * this.globalScale;
+
+    const sideOffset = Math.max(
+      spacing * 2.5,
+      this.screenWidth / 2 - GameConfig.card.width * this.globalScale * 1.2,
+    );
+
+    if (!this.isGameOverAnimating) {
+      this.hpContainer.position.set(
+        160 * this.globalScale,
+        this.screenHeight - 160 * this.globalScale,
+      );
+      this.hpContainer.scale.set(this.globalScale);
+    }
+
+    this.skipContainer.position.set(centerX, centerY - spacing * 1.8);
+    this.skipContainer.scale.set(this.globalScale);
+
+    let z = 10;
+
+    this.deck.forEach((card, i) => {
+      card.globalScale = this.globalScale;
+      card.targetX = centerX - sideOffset;
+      card.targetY = centerY - spacing * 1.5 - i * 0.5;
+      card.targetRotation = 0;
+      card.zIndex = z++;
+      card.setShadowVisible(i === 0);
+    });
+
+    const discardX = centerX + sideOffset;
+    const discardY = centerY - spacing * 1.5;
+
+    this.discard.forEach((card, i) => {
+      card.globalScale = this.globalScale;
+      card.targetX = discardX;
+      card.targetY = discardY - i * 0.5;
+      card.targetRotation = 0;
+      card.zIndex = z++;
+      card.setShadowVisible(i === 0);
+    });
+
+    this.deckCountText.text = `${this.deck.length}`;
+    this.deckCountText.visible = this.deck.length > 0;
+    this.deckCountText.position.set(
+      centerX - sideOffset,
+      centerY -
+        spacing * 1.5 +
+        (GameConfig.card.height / 2) * this.globalScale +
+        10,
+    );
+    this.deckCountText.scale.set(this.globalScale);
+
+    this.discardCountText.text = `${this.discard.length}`;
+    this.discardCountText.visible = this.discard.length > 0;
+    this.discardCountText.position.set(
+      discardX,
+      discardY + (GameConfig.card.height / 2) * this.globalScale + 10,
+    );
+    this.discardCountText.scale.set(this.globalScale);
+
+    const roomStartX = centerX - spacing * 1.5;
+    this.room.forEach((card, i) => {
+      card.globalScale = this.globalScale;
+      card.targetX = roomStartX + i * spacing;
+      card.targetY = centerY - spacing * 0.5;
+      card.targetRotation = 0;
+      card.zIndex = card === this.focusedCard ? 300 : z++;
+      card.setShadowVisible(true);
+    });
+
+    const weaponBaseX = centerX;
+    const weaponBaseY = centerY + spacing * 1.2;
+
+    this.fistsZone.position.set(weaponBaseX + spacing * 1.5, weaponBaseY);
+    this.fistsZone.scale.set(this.globalScale);
+    this.fistsZone.zIndex = 300;
+
+    if (this.weapon) {
+      this.slain.forEach((card, i) => {
+        card.globalScale = this.globalScale;
+        card.targetX =
+          weaponBaseX +
+          ((GameConfig.card.height - GameConfig.card.width) / 2) *
+            this.globalScale;
+        card.targetY = weaponBaseY;
+        card.targetRotation = Math.PI / 2;
+        card.zIndex = z++;
+        card.setShadowVisible(i === 0);
+      });
+
+      this.weapon.globalScale = this.globalScale;
+      this.weapon.targetX = weaponBaseX;
+      this.weapon.targetY = weaponBaseY;
+      this.weapon.targetRotation = 0;
+
+      const isWeaponTargetable =
+        this.focusedCard &&
+        this.focusedCard.data.type === "monster" &&
+        this.focusedCard.data.value < this.lastSlainValue;
+      this.weapon.zIndex = isWeaponTargetable ? 300 : z + 100;
+      this.weapon.setShadowVisible(true);
+    }
+
+    if (this.scoringMonsters.length > 0) {
+      const total = this.scoringMonsters.length;
+      const cardW = GameConfig.card.width * this.globalScale;
+      const maxW = this.screenWidth * 0.8;
+      const overlapSpacing = Math.min(
+        cardW + 10,
+        maxW / Math.max(1, total - 1),
+      );
+      const startX = centerX - (overlapSpacing * (total - 1)) / 2;
+
+      this.scoringMonsters.forEach((card, i) => {
+        card.globalScale = this.globalScale;
+        card.targetX = startX + i * overlapSpacing;
+        card.targetY = centerY;
+        card.targetRotation = 0;
+        card.zIndex = 400 + i;
+        card.setShadowVisible(true);
+      });
+    }
+  }
+}
