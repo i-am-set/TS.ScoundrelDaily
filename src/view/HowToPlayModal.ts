@@ -2,6 +2,12 @@ import { Container, Graphics, Text, TextStyle } from "pixi.js";
 import { GameConfig } from "../data/GameConfig";
 import { AudioJuice } from "../utils/AudioJuice";
 
+interface TextSegment {
+  text: string;
+  color?: number;
+  bold?: boolean;
+}
+
 export class HowToPlayModal extends Container {
   private overlay: Graphics;
   private panel: Graphics;
@@ -20,7 +26,7 @@ export class HowToPlayModal extends Container {
     this.addChild(this.overlay);
 
     this.panel = new Graphics()
-      .roundRect(-350, -380, 700, 760, 16)
+      .roundRect(-240, -360, 480, 720, 16)
       .fill({ color: GameConfig.colors.background, alpha: 1 })
       .stroke({ width: 4, color: GameConfig.colors.ui.highlight });
     this.panel.eventMode = "static";
@@ -32,21 +38,21 @@ export class HowToPlayModal extends Container {
       text: "How to Play SCOUNDREL",
       style: new TextStyle({
         fontFamily: "Outfit",
-        fontSize: 32,
+        fontSize: 26,
         fontWeight: "900",
         fill: GameConfig.colors.ui.highlight,
         letterSpacing: 1,
       }),
     });
     title.anchor.set(0.5, 0);
-    title.position.set(0, -350);
+    title.position.set(0, -330);
     this.panel.addChild(title);
 
     const contentContainer = new Container();
-    contentContainer.position.set(-310, -280);
+    contentContainer.position.set(-210, -270);
     this.panel.addChild(contentContainer);
 
-    const lines = [
+    const lines: TextSegment[][] = [
       [
         { text: "• You start with " },
         {
@@ -56,15 +62,18 @@ export class HowToPlayModal extends Container {
         },
         { text: "." },
       ],
+      [{ text: "• Each turn, flip cards until there are" }],
       [
-        { text: "• Each turn, flip cards until there are " },
-        { text: "4 cards face up", bold: true },
+        { text: "  4 cards face up", bold: true },
         { text: " (this is the Room)." },
       ],
       [
         { text: "• You can " },
         { text: "skip the Room", bold: true },
         { text: ", but " },
+      ],
+      [
+        { text: "  " },
         {
           text: "not twice in a row",
           color: GameConfig.colors.ui.healthRed,
@@ -75,57 +84,59 @@ export class HowToPlayModal extends Container {
       [
         { text: "• If you play the Room, pick " },
         { text: "3 of the 4 cards", bold: true },
-        { text: ", one at a time." },
+        { text: "," },
       ],
+      [{ text: "  one at a time." }],
       [],
       [
         {
-          text: "• Monster (♠ or ♣):",
+          text: "• Monster (♠\uFE0E or ♣\uFE0E):",
           color: GameConfig.colors.ui.healthRed,
           bold: true,
         },
       ],
-      [{ text: "    No weapon → lose its full value in health." }],
-      [
-        {
-          text: "    With a weapon → lose only the difference (or 0 if weapon is stronger).",
-        },
-      ],
+      [{ text: "    No weapon → lose full value in health." }],
+      [{ text: "    With weapon → lose the difference" }],
+      [{ text: "    (or 0 if weapon is stronger)." }],
       [],
       [
         {
-          text: "• Weapon (♦):",
+          text: "• Weapon (♦\uFE0E):",
           color: GameConfig.colors.ui.avoidActive,
           bold: true,
         },
       ],
-      [{ text: "    You must equip it and replace your current weapon." }],
+      [{ text: "    Equip it to replace your current weapon." }],
       [],
       [
         {
-          text: "• Potion (♥):",
+          text: "• Potion (♥\uFE0E):",
           color: GameConfig.colors.ui.healthGreen,
           bold: true,
         },
       ],
+      [{ text: "    Heals you (max 20). You can only use" }],
       [
-        { text: "    Heals you (max 20 health). You can only use " },
+        { text: "    " },
         { text: "one potion per turn", bold: true },
         { text: "." },
       ],
       [],
       [{ text: "• Weapons get weaker over time:", bold: true }],
       [
-        { text: "    After using one, it can only fight " },
-        { text: "weaker monsters", bold: true },
+        { text: "    After use, it can only fight " },
+        { text: "weaker", bold: true },
+      ],
+      [
+        { text: "    monsters", bold: true },
         { text: " than the last one it hit." },
       ],
       [],
       [
         { text: "• After choosing 3 cards, " },
         { text: "1 card stays", bold: true },
-        { text: " for the next turn." },
       ],
+      [{ text: "  for the next turn." }],
       [
         { text: "• You lose if your health hits " },
         { text: "0", color: GameConfig.colors.ui.healthRed, bold: true },
@@ -140,13 +151,12 @@ export class HowToPlayModal extends Container {
         },
         { text: "." },
       ],
-      [{ text: "• Your score = remaining health (or negative if you lose)." }],
     ];
 
     let currentY = 0;
     for (const line of lines) {
       if (line.length === 0) {
-        currentY += 15;
+        currentY += 12;
         continue;
       }
       const lineContainer = new Container();
@@ -167,11 +177,11 @@ export class HowToPlayModal extends Container {
       }
       lineContainer.y = currentY;
       contentContainer.addChild(lineContainer);
-      currentY += 28;
+      currentY += 22;
     }
 
     const clickToClose = new Text({
-      text: "(Click anywhere to close)",
+      text: "(Tap anywhere to close)",
       style: new TextStyle({
         fontFamily: "Outfit",
         fontSize: 16,
@@ -181,7 +191,7 @@ export class HowToPlayModal extends Container {
       }),
     });
     clickToClose.anchor.set(0.5);
-    clickToClose.position.set(0, 340);
+    clickToClose.position.set(0, 320);
     this.panel.addChild(clickToClose);
 
     this.resize(screenWidth, screenHeight);
@@ -206,7 +216,7 @@ export class HowToPlayModal extends Container {
         requestAnimationFrame(animate);
       } else {
         this.alpha = 1;
-        this.panel.scale.set(1);
+        this.panel.scale.set(this.panel.scale.x);
       }
     };
     animate();
@@ -233,7 +243,11 @@ export class HowToPlayModal extends Container {
       .rect(0, 0, width, height)
       .fill({ color: 0x000000, alpha: 0.85 });
     this.panel.position.set(width / 2, height / 2);
-    const scale = Math.min(width / 750, height / 850, 1);
+
+    const safeWidth = width * 0.9;
+    const safeHeight = height * 0.9;
+    const scale = Math.min(safeWidth / 480, safeHeight / 720, 1.2);
+
     this.panel.scale.set(scale);
   }
 }

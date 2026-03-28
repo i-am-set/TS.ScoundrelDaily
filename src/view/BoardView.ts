@@ -23,6 +23,8 @@ export class BoardView extends Container {
   private gameState: "playing" | "scoring" | "gameover" | "dealing" = "dealing";
   private isGameOverAnimating: boolean = false;
 
+  private touchPreviewCard: CardView | null = null;
+
   private screenWidth: number = 0;
   private screenHeight: number = 0;
   private globalScale: number = 1;
@@ -297,6 +299,7 @@ export class BoardView extends Container {
 
   private async dealRoom(): Promise<void> {
     this.gameState = "dealing";
+    this.touchPreviewCard = null;
     this.updateSelectableStates();
     this.updateAvoidButtonState();
 
@@ -383,6 +386,7 @@ export class BoardView extends Container {
     }
 
     this.gameState = "dealing";
+    this.touchPreviewCard = null;
     this.updateSelectableStates();
     this.updateAvoidButtonState();
 
@@ -527,12 +531,26 @@ export class BoardView extends Container {
   private onCardClicked(card: CardView): void {
     if (this.gameState !== "playing") return;
 
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+
     if (this.room.includes(card)) {
       if (this.focusedCard === card) {
         AudioJuice.click();
         this.clearFocus();
         return;
       }
+
+      if (isTouch && this.touchPreviewCard !== card) {
+        if (this.touchPreviewCard) {
+          this.onCardHoverLeave(this.touchPreviewCard);
+        }
+        this.touchPreviewCard = card;
+        this.onCardHoverEnter(card);
+        return;
+      }
+
+      this.touchPreviewCard = null;
+      this.onCardHoverLeave(card);
 
       if (card.data.type === "potion") {
         this.usePotion(card);
@@ -701,6 +719,7 @@ export class BoardView extends Container {
     if (this.gameState !== "playing") return;
 
     this.clearFocus();
+    this.touchPreviewCard = null;
     this.cardsPlayedThisTurn++;
     this.canAvoid = true;
     this.updateAvoidButtonState();

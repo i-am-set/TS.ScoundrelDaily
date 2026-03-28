@@ -176,10 +176,10 @@ export class CardView extends Container {
     container.addChild(rankText);
 
     const suitSymbols: Record<string, string> = {
-      hearts: "♥",
-      diamonds: "♦",
-      spades: "♠",
-      clubs: "♣",
+      hearts: "♥\uFE0E",
+      diamonds: "♦\uFE0E",
+      spades: "♠\uFE0E",
+      clubs: "♣\uFE0E",
     };
 
     const suitText = new Text({
