@@ -15,6 +15,7 @@ export class HealthView extends Container {
   private hpLabelText: Text;
   private hpValueText: Text;
   private hpPreviewText: Text;
+  private hpPreviewSubText: Text;
 
   private hpSpringV: number = 0;
   private hpScale: number = 1;
@@ -68,9 +69,23 @@ export class HealthView extends Container {
         stroke: { color: 0x000000, width: 5 },
       }),
     });
-    this.hpPreviewText.anchor.set(0.5, 0);
+    this.hpPreviewText.anchor.set(0, 0);
     this.hpPreviewText.y = 65;
     this.addChild(this.hpPreviewText);
+
+    this.hpPreviewSubText = new Text({
+      text: "",
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 28,
+        fontWeight: "bold",
+        fill: 0xffffff,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    this.hpPreviewSubText.anchor.set(0, 0);
+    this.hpPreviewSubText.y = 65;
+    this.addChild(this.hpPreviewSubText);
 
     Ticker.shared.add(this.update, this);
   }
@@ -90,9 +105,36 @@ export class HealthView extends Container {
     }
   }
 
-  public setPreview(text: string, color: number): void {
+  public setPreview(
+    text: string,
+    color: number,
+    subText: string = "",
+    subColor: number = 0xffffff,
+  ): void {
+    if (!text) {
+      this.hpPreviewText.visible = false;
+      this.hpPreviewSubText.visible = false;
+      return;
+    }
+
     this.hpPreviewText.text = text;
     this.hpPreviewText.tint = color;
+    this.hpPreviewText.visible = true;
+
+    if (subText) {
+      this.hpPreviewSubText.text = subText;
+      this.hpPreviewSubText.tint = subColor;
+      this.hpPreviewSubText.visible = true;
+    } else {
+      this.hpPreviewSubText.visible = false;
+    }
+
+    const totalWidth =
+      this.hpPreviewText.width + (subText ? this.hpPreviewSubText.width : 0);
+    const startX = -totalWidth / 2;
+
+    this.hpPreviewText.x = startX;
+    this.hpPreviewSubText.x = startX + this.hpPreviewText.width;
   }
 
   public playDamage(amount: number): void {
@@ -122,6 +164,7 @@ export class HealthView extends Container {
   public hideLabels(): void {
     this.hpLabelText.visible = false;
     this.hpPreviewText.visible = false;
+    this.hpPreviewSubText.visible = false;
   }
 
   private spawnFloatingText(

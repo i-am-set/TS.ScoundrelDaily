@@ -35,7 +35,6 @@ export class BoardView extends Container {
   private hoveredWeapon: CardView | null = null;
   private fistsZone: Container;
   private weaponGhost: Container;
-  private weaponDiscardIcon: Graphics;
 
   private deckCountText: Text;
   private discardCountText: Text;
@@ -88,20 +87,6 @@ export class BoardView extends Container {
     this.weaponGhost = this.createWeaponGhost();
     this.addChild(this.weaponGhost);
 
-    this.weaponDiscardIcon = new Graphics()
-      .moveTo(-24, -24)
-      .lineTo(24, 24)
-      .moveTo(24, -24)
-      .lineTo(-24, 24)
-      .stroke({
-        width: 8,
-        color: GameConfig.colors.ui.healthRed,
-        cap: "round",
-      });
-    this.weaponDiscardIcon.visible = false;
-    this.weaponDiscardIcon.zIndex = 600;
-    this.addChild(this.weaponDiscardIcon);
-
     this.deckCountText = new Text({
       text: "0",
       style: new TextStyle({
@@ -151,10 +136,6 @@ export class BoardView extends Container {
         this.damageFlashOverlay.alpha = 0;
       }
     }
-
-    if (this.weaponDiscardIcon.visible && this.weapon) {
-      this.weaponDiscardIcon.position.set(this.weapon.x, this.weapon.y);
-    }
   }
 
   private takeDamage(amount: number): void {
@@ -199,31 +180,39 @@ export class BoardView extends Container {
     this.healthView.setHealth(this.health);
   }
 
+  private drawSeamlessDashedRect(g: Graphics, w: number, h: number): void {
+    const getPoint = (t: number) => {
+      if (t <= w) return { x: -w / 2 + t, y: -h / 2 };
+      if (t <= w + h) return { x: w / 2, y: -h / 2 + (t - w) };
+      if (t <= 2 * w + h) return { x: w / 2 - (t - w - h), y: h / 2 };
+      return { x: -w / 2, y: h / 2 - (t - 2 * w - h) };
+    };
+
+    for (let i = 0; i < 28; i++) {
+      const startT = i * 24;
+      const endT = startT + 14;
+
+      let pt = getPoint(startT);
+      g.moveTo(pt.x, pt.y);
+
+      for (const corner of [w, w + h, 2 * w + h]) {
+        if (startT < corner && endT > corner) {
+          const cpt = getPoint(corner);
+          g.lineTo(cpt.x, cpt.y);
+        }
+      }
+      pt = getPoint(endT);
+      g.lineTo(pt.x, pt.y);
+    }
+  }
+
   private createTargetZone(label: string): Container {
     const container = new Container();
     const g = new Graphics();
     const w = GameConfig.card.width;
     const h = GameConfig.card.height;
-    const dash = 12;
-    const gap = 8;
 
-    g.moveTo(-w / 2, -h / 2);
-    for (let x = -w / 2; x < w / 2; x += dash + gap) {
-      g.lineTo(Math.min(x + dash, w / 2), -h / 2);
-      g.moveTo(Math.min(x + dash + gap, w / 2), -h / 2);
-    }
-    for (let y = -h / 2; y < h / 2; y += dash + gap) {
-      g.lineTo(w / 2, Math.min(y + dash, h / 2));
-      g.moveTo(w / 2, Math.min(y + dash + gap, h / 2));
-    }
-    for (let x = w / 2; x > -w / 2; x -= dash + gap) {
-      g.lineTo(Math.max(x - dash, -w / 2), h / 2);
-      g.moveTo(Math.max(x - dash - gap, -w / 2), h / 2);
-    }
-    for (let y = h / 2; y > -h / 2; y -= dash + gap) {
-      g.lineTo(-w / 2, Math.max(y - dash, -h / 2));
-      g.moveTo(-w / 2, Math.max(y - dash - gap, -h / 2));
-    }
+    this.drawSeamlessDashedRect(g, w, h);
     g.stroke({ width: 4, color: GameConfig.colors.ui.highlight, alpha: 1 });
     container.addChild(g);
 
@@ -259,26 +248,8 @@ export class BoardView extends Container {
     const g = new Graphics();
     const w = GameConfig.card.width;
     const h = GameConfig.card.height;
-    const dash = 12;
-    const gap = 8;
 
-    g.moveTo(-w / 2, -h / 2);
-    for (let x = -w / 2; x < w / 2; x += dash + gap) {
-      g.lineTo(Math.min(x + dash, w / 2), -h / 2);
-      g.moveTo(Math.min(x + dash + gap, w / 2), -h / 2);
-    }
-    for (let y = -h / 2; y < h / 2; y += dash + gap) {
-      g.lineTo(w / 2, Math.min(y + dash, h / 2));
-      g.moveTo(w / 2, Math.min(y + dash + gap, h / 2));
-    }
-    for (let x = w / 2; x > -w / 2; x -= dash + gap) {
-      g.lineTo(Math.max(x - dash, -w / 2), h / 2);
-      g.moveTo(Math.max(x - dash - gap, -w / 2), h / 2);
-    }
-    for (let y = h / 2; y > -h / 2; y -= dash + gap) {
-      g.lineTo(-w / 2, Math.max(y - dash, -h / 2));
-      g.moveTo(-w / 2, Math.max(y - dash - gap, -h / 2));
-    }
+    this.drawSeamlessDashedRect(g, w, h);
     g.stroke({
       width: 4,
       color: GameConfig.colors.ui.hoverHighlight,
@@ -477,19 +448,29 @@ export class BoardView extends Container {
     AudioJuice.hover();
 
     if (card.data.type === "monster") {
-      card.setPreview(`-${card.data.value}`, GameConfig.colors.ui.healthRed);
-      this.healthView.setPreview(
-        `-${card.data.value}`,
-        GameConfig.colors.ui.healthRed,
-      );
+      let mainText = `-${card.data.value}`;
+      let mainColor = GameConfig.colors.ui.healthRed;
+      let subText = "";
+      let subColor = GameConfig.colors.ui.healthRed;
 
       if (this.weapon && !this.focusedCard) {
         if (card.data.value < this.lastSlainValue) {
           this.weapon.setHighlight(true, GameConfig.colors.ui.healthGreen);
+          const reduced = Math.max(0, card.data.value - this.weapon.data.value);
+          if (reduced < card.data.value) {
+            subText = `(-${reduced})`;
+            subColor =
+              reduced > 0
+                ? GameConfig.colors.ui.healthRed
+                : GameConfig.colors.ui.healthGray;
+          }
         } else {
           this.weapon.setHighlight(true, GameConfig.colors.ui.healthRed);
         }
       }
+
+      card.setPreview(mainText, mainColor, subText, subColor);
+      this.healthView.setPreview(mainText, mainColor, subText, subColor);
     } else if (card.data.type === "potion") {
       if (this.potionsUsedThisTurn >= 1) {
         card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
@@ -654,6 +635,7 @@ export class BoardView extends Container {
     if (this.weapon) {
       AudioJuice.discardWeapon();
       this.weapon.setHighlight(false);
+      this.weapon.setDiscardIconVisible(false);
       this.discard.push(this.weapon, ...this.slain);
       this.slain = [];
     }
@@ -665,7 +647,6 @@ export class BoardView extends Container {
 
     this.hoveredWeapon = null;
     this.weaponGhost.visible = false;
-    this.weaponDiscardIcon.visible = false;
 
     this.advanceTurn();
   }
@@ -695,6 +676,7 @@ export class BoardView extends Container {
     if (card.data.value === 2) {
       AudioJuice.discardWeapon();
       this.weapon.setHighlight(false);
+      this.weapon.setDiscardIconVisible(false);
       this.discard.push(this.weapon, ...this.slain);
       this.weapon = null;
       this.slain = [];
@@ -743,6 +725,7 @@ export class BoardView extends Container {
 
     if (this.weapon) {
       this.weapon.setHighlight(false);
+      this.weapon.setDiscardIconVisible(false);
       this.discard.push(this.weapon, ...this.slain);
       this.weapon = null;
       this.slain = [];
@@ -799,6 +782,7 @@ export class BoardView extends Container {
 
     if (this.weapon) {
       this.weapon.setHighlight(false);
+      this.weapon.setDiscardIconVisible(false);
       this.discard.push(this.weapon, ...this.slain);
       this.weapon = null;
       this.slain = [];
@@ -1065,16 +1049,16 @@ export class BoardView extends Container {
       this.weaponGhost.zIndex = 200;
     } else {
       this.weaponGhost.visible = false;
-      this.weaponDiscardIcon.visible = false;
     }
 
     if (this.weapon) {
       let targetWeaponX = weaponBaseX;
 
       if (this.hoveredWeapon) {
-        targetWeaponX = weaponBaseX - spacing * 1.2;
-        this.weaponDiscardIcon.visible = true;
-        this.weaponDiscardIcon.scale.set(this.globalScale);
+        targetWeaponX = weaponBaseX + spacing * 1.2;
+        this.weapon.setDiscardIconVisible(true);
+      } else {
+        this.weapon.setDiscardIconVisible(false);
       }
 
       this.slain.forEach((card, i) => {

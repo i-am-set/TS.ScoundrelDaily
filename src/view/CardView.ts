@@ -24,6 +24,8 @@ export class CardView extends Container {
   private readonly hoverGlow: Graphics;
   private readonly disabledOverlay: Graphics;
   private readonly previewText: Text;
+  private readonly previewSubText: Text;
+  private readonly discardIcon: Graphics;
 
   private targetScale: number = GameConfig.juice.scaleNormal ?? 1.0;
   private targetShadowY: number = GameConfig.juice.shadowYNormal ?? 8;
@@ -89,6 +91,20 @@ export class CardView extends Container {
     this.disabledOverlay.visible = false;
     this.addChild(this.disabledOverlay);
 
+    this.discardIcon = new Graphics()
+      .moveTo(-24, -24)
+      .lineTo(24, 24)
+      .moveTo(24, -24)
+      .lineTo(-24, 24)
+      .stroke({
+        width: 8,
+        color: GameConfig.colors.ui.healthRed,
+        cap: "round",
+      });
+    this.discardIcon.visible = false;
+    this.discardIcon.zIndex = 600;
+    this.addChild(this.discardIcon);
+
     this.previewText = new Text({
       text: "",
       style: new TextStyle({
@@ -99,10 +115,25 @@ export class CardView extends Container {
         stroke: { color: 0x000000, width: 5 },
       }),
     });
-    this.previewText.anchor.set(0.5, 1);
-    this.previewText.position.set(0, -height / 2 - 10);
+    this.previewText.anchor.set(0, 1);
+    this.previewText.y = -height / 2 - 10;
     this.previewText.visible = false;
     this.addChild(this.previewText);
+
+    this.previewSubText = new Text({
+      text: "",
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 24,
+        fontWeight: "bold",
+        fill: 0xffffff,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    this.previewSubText.anchor.set(0, 1);
+    this.previewSubText.y = -height / 2 - 10;
+    this.previewSubText.visible = false;
+    this.addChild(this.previewSubText);
 
     this.eventMode = "static";
     this.cursor = "pointer";
@@ -207,14 +238,40 @@ export class CardView extends Container {
     this.highlightGlow.tint = color;
   }
 
-  public setPreview(text: string, color: number): void {
+  public setPreview(
+    text: string,
+    color: number,
+    subText: string = "",
+    subColor: number = 0xffffff,
+  ): void {
     if (!text) {
       this.previewText.visible = false;
+      this.previewSubText.visible = false;
       return;
     }
+
     this.previewText.text = text;
     this.previewText.tint = color;
     this.previewText.visible = true;
+
+    if (subText) {
+      this.previewSubText.text = subText;
+      this.previewSubText.tint = subColor;
+      this.previewSubText.visible = true;
+    } else {
+      this.previewSubText.visible = false;
+    }
+
+    const totalWidth =
+      this.previewText.width + (subText ? this.previewSubText.width : 0);
+    const startX = -totalWidth / 2;
+
+    this.previewText.x = startX;
+    this.previewSubText.x = startX + this.previewText.width;
+  }
+
+  public setDiscardIconVisible(visible: boolean): void {
+    this.discardIcon.visible = visible;
   }
 
   public setShadowVisible(visible: boolean): void {
