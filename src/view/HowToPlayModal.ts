@@ -221,6 +221,7 @@ export class HowToPlayModal extends Container {
         requestAnimationFrame(animate);
       } else {
         this.visible = false;
+        this.emit("closed");
       }
     };
     animate();

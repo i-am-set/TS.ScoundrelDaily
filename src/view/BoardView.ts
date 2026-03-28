@@ -1,18 +1,10 @@
 import { Container, Text, TextStyle, Graphics, Ticker } from "pixi.js";
 import { CardView } from "./CardView";
+import { HealthView } from "./HealthView";
+import { HUDView } from "./HUDView";
 import { GameConfig } from "../data/GameConfig";
 import { AudioJuice } from "../utils/AudioJuice";
 import { HowToPlayModal } from "./HowToPlayModal";
-
-interface FloatingText {
-  text: Text;
-  life: number;
-  maxLife: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-}
 
 export class BoardView extends Container {
   private deck: CardView[] = [];
@@ -28,27 +20,22 @@ export class BoardView extends Container {
   private potionsUsedThisTurn: number = 0;
   private canAvoid: boolean = true;
   private lastSlainValue: number = 99;
-  private gameState: "playing" | "scoring" | "gameover" = "playing";
+  private gameState: "playing" | "scoring" | "gameover" | "dealing" = "dealing";
   private isGameOverAnimating: boolean = false;
 
   private screenWidth: number = 0;
   private screenHeight: number = 0;
   private globalScale: number = 1;
 
-  private hpContainer: Container;
-  private hpLabelText: Text;
-  private hpValueText: Text;
-  private hpPreviewText: Text;
-
-  private skipContainer: Container;
-  private skipBtnBg: Graphics;
-  private skipText: Text;
-  private roomText: Text;
-  private skipStrikethrough: Graphics;
+  private healthView: HealthView;
+  private hudView: HUDView;
 
   private overlay: Graphics;
   private focusedCard: CardView | null = null;
+  private hoveredWeapon: CardView | null = null;
   private fistsZone: Container;
+  private weaponGhost: Container;
+  private weaponDiscardIcon: Graphics;
 
   private deckCountText: Text;
   private discardCountText: Text;
@@ -56,16 +43,7 @@ export class BoardView extends Container {
   private damageFlashOverlay: Graphics;
   private shakeTimer: number = 0;
   private shakeIntensity: number = 0;
-  private hpSpringV: number = 0;
-  private hpScale: number = 1;
-  private hpRotV: number = 0;
-  private hpRot: number = 0;
-  private hpEffectTimer: number = 0;
-  private hpEffectType: "damage" | "heal" | "none" = "none";
-  private baseHpColor: number = GameConfig.colors.ui.healthGreen;
-  private floatingTexts: FloatingText[] = [];
 
-  private helpBtn: Container;
   private helpModal: HowToPlayModal;
 
   constructor() {
@@ -89,126 +67,40 @@ export class BoardView extends Container {
     this.overlay.on("pointerdown", () => this.clearFocus());
     this.addChild(this.overlay);
 
-    this.hpContainer = new Container();
-    this.hpContainer.zIndex = 500;
+    this.healthView = new HealthView();
+    this.healthView.zIndex = 500;
+    this.addChild(this.healthView);
 
-    this.hpLabelText = new Text({
-      text: "HP",
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 48,
-        fontWeight: "bold",
-        fill: GameConfig.colors.textLight,
-        letterSpacing: 2,
-        stroke: { color: 0x000000, width: 6 },
-      }),
+    this.hudView = new HUDView();
+    this.hudView.on("skipClicked", () => this.onAvoidClicked());
+    this.hudView.on("helpClicked", () => {
+      AudioJuice.click();
+      this.helpModal.show();
     });
-    this.hpLabelText.anchor.set(0.5, 1);
-    this.hpLabelText.y = -65;
-    this.hpContainer.addChild(this.hpLabelText);
-
-    this.hpValueText = new Text({
-      text: "20",
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 128,
-        fontWeight: "900",
-        fill: 0xffffff,
-        stroke: { color: 0x000000, width: 8 },
-      }),
-    });
-    this.hpValueText.tint = GameConfig.colors.ui.healthGreen;
-    this.hpValueText.anchor.set(0.5, 0.5);
-    this.hpContainer.addChild(this.hpValueText);
-
-    this.hpPreviewText = new Text({
-      text: "",
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 40,
-        fontWeight: "bold",
-        fill: 0xffffff,
-        stroke: { color: 0x000000, width: 5 },
-      }),
-    });
-    this.hpPreviewText.anchor.set(0.5, 0);
-    this.hpPreviewText.y = 65;
-    this.hpContainer.addChild(this.hpPreviewText);
-
-    this.addChild(this.hpContainer);
-
-    this.skipContainer = new Container();
-
-    this.roomText = new Text({
-      text: "ROOM: 1",
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 20,
-        fontWeight: "bold",
-        fill: GameConfig.colors.textLight,
-        letterSpacing: 2,
-        stroke: { color: 0x000000, width: 4 },
-      }),
-    });
-    this.roomText.anchor.set(0.5, 1);
-    this.roomText.y = -35;
-    this.skipContainer.addChild(this.roomText);
-
-    this.skipBtnBg = new Graphics()
-      .roundRect(-100, -25, 200, 50, 8)
-      .fill({ color: GameConfig.colors.ui.buttonBg, alpha: 1 })
-      .stroke({ width: 2, color: GameConfig.colors.ui.avoidActive });
-    this.skipBtnBg.eventMode = "static";
-    this.skipBtnBg.cursor = "pointer";
-    this.skipBtnBg.on("pointerdown", () => this.onAvoidClicked());
-    this.skipBtnBg.on("pointerenter", () => {
-      if (this.skipBtnBg.eventMode === "static") {
-        this.skipBtnBg
-          .clear()
-          .roundRect(-100, -25, 200, 50, 8)
-          .fill({ color: GameConfig.colors.ui.buttonHover, alpha: 1 })
-          .stroke({ width: 2, color: GameConfig.colors.ui.avoidActive });
-      }
-    });
-    this.skipBtnBg.on("pointerleave", () => {
-      if (this.skipBtnBg.eventMode === "static") {
-        this.skipBtnBg
-          .clear()
-          .roundRect(-100, -25, 200, 50, 8)
-          .fill({ color: GameConfig.colors.ui.buttonBg, alpha: 1 })
-          .stroke({ width: 2, color: GameConfig.colors.ui.avoidActive });
-      }
-    });
-    this.skipContainer.addChild(this.skipBtnBg);
-
-    this.skipText = new Text({
-      text: "SKIP ROOM",
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 20,
-        fontWeight: "900",
-        fill: GameConfig.colors.ui.avoidActive,
-        letterSpacing: 2,
-        stroke: { color: 0x000000, width: 4 },
-      }),
-    });
-    this.skipText.anchor.set(0.5);
-    this.skipContainer.addChild(this.skipText);
-
-    this.skipStrikethrough = new Graphics()
-      .moveTo(-80, 0)
-      .lineTo(80, 0)
-      .stroke({ width: 4, color: GameConfig.colors.ui.avoidDisabled });
-    this.skipStrikethrough.visible = false;
-    this.skipContainer.addChild(this.skipStrikethrough);
-
-    this.addChild(this.skipContainer);
+    this.addChild(this.hudView);
 
     this.fistsZone = this.createTargetZone("FISTS");
     this.fistsZone.on("pointerdown", () => this.onFistsZoneClicked());
     this.fistsZone.on("pointerenter", () => this.onFistsHoverEnter());
     this.fistsZone.on("pointerleave", () => this.onFistsHoverLeave());
     this.addChild(this.fistsZone);
+
+    this.weaponGhost = this.createWeaponGhost();
+    this.addChild(this.weaponGhost);
+
+    this.weaponDiscardIcon = new Graphics()
+      .moveTo(-24, -24)
+      .lineTo(24, 24)
+      .moveTo(24, -24)
+      .lineTo(-24, 24)
+      .stroke({
+        width: 8,
+        color: GameConfig.colors.ui.healthRed,
+        cap: "round",
+      });
+    this.weaponDiscardIcon.visible = false;
+    this.weaponDiscardIcon.zIndex = 600;
+    this.addChild(this.weaponDiscardIcon);
 
     this.deckCountText = new Text({
       text: "0",
@@ -236,32 +128,6 @@ export class BoardView extends Container {
     this.discardCountText.anchor.set(0.5, 0);
     this.addChild(this.discardCountText);
 
-    this.helpBtn = new Container();
-    const helpBg = new Graphics()
-      .circle(0, 0, 24)
-      .fill({ color: GameConfig.colors.ui.buttonBg })
-      .stroke({ width: 2, color: GameConfig.colors.textLight });
-    this.helpBtn.addChild(helpBg);
-    const helpText = new Text({
-      text: "?",
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 28,
-        fontWeight: "bold",
-        fill: GameConfig.colors.textLight,
-      }),
-    });
-    helpText.anchor.set(0.5);
-    this.helpBtn.addChild(helpText);
-    this.helpBtn.eventMode = "static";
-    this.helpBtn.cursor = "pointer";
-    this.helpBtn.zIndex = 1000;
-    this.helpBtn.on("pointerdown", () => {
-      AudioJuice.click();
-      this.helpModal.show();
-    });
-    this.addChild(this.helpBtn);
-
     this.helpModal = new HowToPlayModal(window.innerWidth, window.innerHeight);
     this.addChild(this.helpModal);
 
@@ -286,81 +152,9 @@ export class BoardView extends Container {
       }
     }
 
-    const tension = 0.15;
-    const dampening = 0.75;
-
-    this.hpSpringV += (1 - this.hpScale) * tension;
-    this.hpSpringV *= dampening;
-    this.hpScale += this.hpSpringV;
-    this.hpValueText.scale.set(this.hpScale);
-
-    this.hpRotV += (0 - this.hpRot) * tension;
-    this.hpRotV *= dampening;
-    this.hpRot += this.hpRotV;
-    this.hpValueText.rotation = this.hpRot;
-
-    if (this.hpEffectTimer > 0) {
-      this.hpEffectTimer -= ticker.deltaMS;
-      const isWhite = Math.floor(this.hpEffectTimer / 50) % 2 === 0;
-      if (this.hpEffectType === "damage") {
-        this.hpValueText.tint = isWhite ? 0xffffff : 0xff0000;
-      } else if (this.hpEffectType === "heal") {
-        this.hpValueText.tint = isWhite ? 0xffffff : 0x00ff00;
-      }
-    } else {
-      this.hpValueText.tint = this.baseHpColor;
+    if (this.weaponDiscardIcon.visible && this.weapon) {
+      this.weaponDiscardIcon.position.set(this.weapon.x, this.weapon.y);
     }
-
-    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
-      const ft = this.floatingTexts[i];
-      ft.life -= ticker.deltaMS;
-      ft.x += ft.vx * dt;
-      ft.y += ft.vy * dt;
-      ft.text.position.set(ft.x, ft.y);
-      ft.text.alpha = Math.max(0, ft.life / ft.maxLife);
-      if (ft.life <= 0) {
-        ft.text.destroy();
-        this.floatingTexts.splice(i, 1);
-      }
-    }
-  }
-
-  private spawnFloatingText(
-    str: string,
-    strokeColor: number,
-    fillColor: number,
-  ): void {
-    const text = new Text({
-      text: str,
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 64,
-        fontWeight: "900",
-        fill: fillColor,
-        stroke: { color: strokeColor, width: 6 },
-        dropShadow: { alpha: 0.3, blur: 4, color: 0x000000, distance: 4 },
-      }),
-    });
-    text.anchor.set(0.5);
-    text.zIndex = 850;
-    text.scale.set(this.globalScale);
-
-    const startX =
-      this.hpContainer.x + (Math.random() - 0.5) * 40 * this.globalScale;
-    const startY = this.hpContainer.y - 60 * this.globalScale;
-    text.position.set(startX, startY);
-
-    this.addChild(text);
-
-    this.floatingTexts.push({
-      text,
-      life: 1200,
-      maxLife: 1200,
-      x: startX,
-      y: startY,
-      vx: (Math.random() - 0.5) * 1.5,
-      vy: -2.5 - Math.random() * 1.5,
-    });
   }
 
   private takeDamage(amount: number): void {
@@ -383,18 +177,8 @@ export class BoardView extends Container {
     this.damageFlashOverlay.alpha = 0.3;
     this.damageFlashOverlay.visible = true;
 
-    this.hpScale = 1.5;
-    this.hpRot = (Math.random() > 0.5 ? 1 : -1) * 0.2;
-
-    this.hpEffectTimer = 300;
-    this.hpEffectType = "damage";
-
-    this.spawnFloatingText(
-      `-${amount}`,
-      0x000000,
-      GameConfig.colors.ui.healthRed,
-    );
-    this.updateHealthUI();
+    this.healthView.playDamage(amount);
+    this.healthView.setHealth(this.health);
   }
 
   private heal(amount: number, isFull: boolean): void {
@@ -411,18 +195,8 @@ export class BoardView extends Container {
       navigator.vibrate(40);
     }
 
-    this.hpScale = 1.3;
-    this.hpRot = (Math.random() > 0.5 ? 1 : -1) * 0.1;
-
-    this.hpEffectTimer = 300;
-    this.hpEffectType = "heal";
-
-    this.spawnFloatingText(
-      `+${amount}`,
-      0x000000,
-      GameConfig.colors.ui.healthGreen,
-    );
-    this.updateHealthUI();
+    this.healthView.playHeal(amount);
+    this.healthView.setHealth(this.health);
   }
 
   private createTargetZone(label: string): Container {
@@ -480,6 +254,42 @@ export class BoardView extends Container {
     return container;
   }
 
+  private createWeaponGhost(): Container {
+    const container = new Container();
+    const g = new Graphics();
+    const w = GameConfig.card.width;
+    const h = GameConfig.card.height;
+    const dash = 12;
+    const gap = 8;
+
+    g.moveTo(-w / 2, -h / 2);
+    for (let x = -w / 2; x < w / 2; x += dash + gap) {
+      g.lineTo(Math.min(x + dash, w / 2), -h / 2);
+      g.moveTo(Math.min(x + dash + gap, w / 2), -h / 2);
+    }
+    for (let y = -h / 2; y < h / 2; y += dash + gap) {
+      g.lineTo(w / 2, Math.min(y + dash, h / 2));
+      g.moveTo(w / 2, Math.min(y + dash + gap, h / 2));
+    }
+    for (let x = w / 2; x > -w / 2; x -= dash + gap) {
+      g.lineTo(Math.max(x - dash, -w / 2), h / 2);
+      g.moveTo(Math.max(x - dash - gap, -w / 2), h / 2);
+    }
+    for (let y = h / 2; y > -h / 2; y -= dash + gap) {
+      g.lineTo(-w / 2, Math.max(y - dash, -h / 2));
+      g.moveTo(-w / 2, Math.max(y - dash - gap, -h / 2));
+    }
+    g.stroke({
+      width: 4,
+      color: GameConfig.colors.ui.hoverHighlight,
+      alpha: 0.5,
+    });
+    container.addChild(g);
+
+    container.visible = false;
+    return container;
+  }
+
   public initCards(cards: CardView[]): void {
     this.deck = cards;
 
@@ -496,7 +306,9 @@ export class BoardView extends Container {
       card.position.set(-500, -500);
     });
 
-    this.dealRoom();
+    this.helpModal.once("closed", () => {
+      this.dealRoom();
+    });
     this.helpModal.show();
   }
 
@@ -512,26 +324,34 @@ export class BoardView extends Container {
     this.updateLayout();
   }
 
-  private dealRoom(): void {
+  private async dealRoom(): Promise<void> {
+    this.gameState = "dealing";
+    this.updateSelectableStates();
+    this.updateAvoidButtonState();
+
     let dealt = false;
     while (this.room.length < 4 && this.deck.length > 0) {
       const card = this.deck.pop()!;
       this.room.push(card);
+
+      this.updateLayout();
       card.flip(true);
+      AudioJuice.draw();
       dealt = true;
+
+      await new Promise((r) => setTimeout(r, 150));
     }
 
-    if (dealt) {
-      AudioJuice.draw();
-      if (this.roomCount > 0) {
-        setTimeout(() => AudioJuice.newRoom(), 200);
-      }
+    if (dealt && this.roomCount > 0) {
+      setTimeout(() => AudioJuice.newRoom(), 200);
     }
 
     this.roomCount++;
-    this.roomText.text = `ROOM: ${this.roomCount}`;
+    this.hudView.updateRoom(this.roomCount);
     this.cardsPlayedThisTurn = 0;
     this.potionsUsedThisTurn = 0;
+
+    this.gameState = "playing";
     this.updateAvoidButtonState();
     this.updateSelectableStates();
     this.updateLayout();
@@ -540,34 +360,24 @@ export class BoardView extends Container {
   private updateAvoidButtonState(): void {
     const isFullRoom = this.room.length === 4;
     const hasNotPlayed = this.cardsPlayedThisTurn === 0;
-    const isEnabled = this.canAvoid && isFullRoom && hasNotPlayed;
-
-    this.skipBtnBg.eventMode = isEnabled ? "static" : "none";
-    this.skipBtnBg.cursor = isEnabled ? "pointer" : "default";
-
-    this.skipBtnBg
-      .clear()
-      .roundRect(-100, -25, 200, 50, 8)
-      .fill({ color: GameConfig.colors.ui.buttonBg, alpha: 1 })
-      .stroke({
-        width: 2,
-        color: isEnabled
-          ? GameConfig.colors.ui.avoidActive
-          : GameConfig.colors.ui.avoidDisabled,
-      });
-
-    this.skipText.style.fill = isEnabled
-      ? GameConfig.colors.ui.avoidActive
-      : GameConfig.colors.ui.avoidDisabled;
-    this.skipStrikethrough.visible = !isEnabled;
+    const isEnabled =
+      this.gameState === "playing" &&
+      this.canAvoid &&
+      isFullRoom &&
+      hasNotPlayed;
+    this.hudView.setSkipEnabled(isEnabled);
   }
 
   private updateSelectableStates(): void {
-    if (this.gameState !== "playing") return;
-
     this.deck.forEach((c) => c.setSelectable(false));
     this.discard.forEach((c) => c.setSelectable(false));
     this.slain.forEach((c) => c.setSelectable(false));
+
+    if (this.gameState !== "playing") {
+      this.room.forEach((c) => c.setSelectable(false));
+      if (this.weapon) this.weapon.setSelectable(false);
+      return;
+    }
 
     if (this.weapon) {
       if (
@@ -590,7 +400,7 @@ export class BoardView extends Container {
     });
   }
 
-  private onAvoidClicked(): void {
+  private async onAvoidClicked(): Promise<void> {
     if (
       this.gameState !== "playing" ||
       !this.canAvoid ||
@@ -600,6 +410,10 @@ export class BoardView extends Container {
       AudioJuice.error();
       return;
     }
+
+    this.gameState = "dealing";
+    this.updateSelectableStates();
+    this.updateAvoidButtonState();
 
     AudioJuice.skipRoom();
     setTimeout(() => AudioJuice.deckReturn(), 150);
@@ -615,6 +429,10 @@ export class BoardView extends Container {
     this.deck.unshift(...this.room);
     this.room = [];
 
+    this.updateLayout();
+
+    await new Promise((r) => setTimeout(r, 400));
+
     this.dealRoom();
   }
 
@@ -622,14 +440,13 @@ export class BoardView extends Container {
     if (!this.focusedCard || this.focusedCard.data.type !== "monster") return;
     const damage = this.focusedCard.data.value;
     this.focusedCard.setPreview(`-${damage}`, GameConfig.colors.ui.healthRed);
-    this.hpPreviewText.text = `-${damage}`;
-    this.hpPreviewText.tint = GameConfig.colors.ui.healthRed;
+    this.healthView.setPreview(`-${damage}`, GameConfig.colors.ui.healthRed);
   }
 
   private onFistsHoverLeave(): void {
     if (!this.focusedCard) return;
     this.focusedCard.setPreview("", 0xffffff);
-    this.hpPreviewText.text = "";
+    this.healthView.setPreview("", 0xffffff);
   }
 
   private onCardHoverEnter(card: CardView): void {
@@ -649,8 +466,7 @@ export class BoardView extends Container {
             ? GameConfig.colors.ui.healthRed
             : GameConfig.colors.ui.healthGray;
         this.focusedCard.setPreview(`-${damage}`, color);
-        this.hpPreviewText.text = `-${damage}`;
-        this.hpPreviewText.tint = color;
+        this.healthView.setPreview(`-${damage}`, color);
       }
       return;
     }
@@ -662,8 +478,10 @@ export class BoardView extends Container {
 
     if (card.data.type === "monster") {
       card.setPreview(`-${card.data.value}`, GameConfig.colors.ui.healthRed);
-      this.hpPreviewText.text = `-${card.data.value}`;
-      this.hpPreviewText.tint = GameConfig.colors.ui.healthRed;
+      this.healthView.setPreview(
+        `-${card.data.value}`,
+        GameConfig.colors.ui.healthRed,
+      );
 
       if (this.weapon && !this.focusedCard) {
         if (card.data.value < this.lastSlainValue) {
@@ -675,41 +493,53 @@ export class BoardView extends Container {
     } else if (card.data.type === "potion") {
       if (this.potionsUsedThisTurn >= 1) {
         card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
-        this.hpPreviewText.text = `+0`;
-        this.hpPreviewText.tint = GameConfig.colors.ui.healthGray;
+        this.healthView.setPreview(`+0`, GameConfig.colors.ui.healthGray);
       } else {
         const gained = Math.min(card.data.value, 20 - this.health);
         if (gained === 0) {
           card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
-          this.hpPreviewText.text = `+0`;
-          this.hpPreviewText.tint = GameConfig.colors.ui.healthGray;
+          this.healthView.setPreview(`+0`, GameConfig.colors.ui.healthGray);
         } else if (gained < card.data.value) {
           card.setPreview(`+${gained}`, GameConfig.colors.ui.healthOrange);
-          this.hpPreviewText.text = `+${gained}`;
-          this.hpPreviewText.tint = GameConfig.colors.ui.healthOrange;
+          this.healthView.setPreview(
+            `+${gained}`,
+            GameConfig.colors.ui.healthOrange,
+          );
         } else {
           card.setPreview(`+${gained}`, GameConfig.colors.ui.healthGreen);
-          this.hpPreviewText.text = `+${gained}`;
-          this.hpPreviewText.tint = GameConfig.colors.ui.healthGreen;
+          this.healthView.setPreview(
+            `+${gained}`,
+            GameConfig.colors.ui.healthGreen,
+          );
         }
       }
+    } else if (card.data.type === "weapon") {
+      this.hoveredWeapon = card;
+      card.setPreview("EQUIP", GameConfig.colors.ui.hoverHighlight);
+      this.healthView.setPreview("EQUIP", GameConfig.colors.ui.hoverHighlight);
+      this.updateLayout();
     }
   }
 
   private onCardHoverLeave(card: CardView): void {
     if (this.focusedCard && card === this.weapon) {
       this.focusedCard.setPreview("", 0xffffff);
-      this.hpPreviewText.text = "";
+      this.healthView.setPreview("", 0xffffff);
       return;
     }
 
     if (this.focusedCard) return;
 
     card.setPreview("", 0xffffff);
-    this.hpPreviewText.text = "";
+    this.healthView.setPreview("", 0xffffff);
 
     if (this.weapon && !this.focusedCard) {
       this.weapon.setHighlight(false);
+    }
+
+    if (card.data.type === "weapon" && this.hoveredWeapon === card) {
+      this.hoveredWeapon = null;
+      this.updateLayout();
     }
   }
 
@@ -760,7 +590,7 @@ export class BoardView extends Container {
     this.focusedCard.setFocused(true);
 
     card.setPreview("", 0xffffff);
-    this.hpPreviewText.text = "";
+    this.healthView.setPreview("", 0xffffff);
 
     this.overlay.visible = true;
     this.overlay.zIndex = 200;
@@ -829,9 +659,14 @@ export class BoardView extends Container {
     }
     this.room = this.room.filter((c) => c !== card);
     card.setPreview("", 0xffffff);
-    this.hpPreviewText.text = "";
+    this.healthView.setPreview("", 0xffffff);
     this.weapon = card;
     this.lastSlainValue = 99;
+
+    this.hoveredWeapon = null;
+    this.weaponGhost.visible = false;
+    this.weaponDiscardIcon.visible = false;
+
     this.advanceTurn();
   }
 
@@ -854,7 +689,7 @@ export class BoardView extends Container {
 
     this.room = this.room.filter((c) => c !== card);
     card.setPreview("", 0xffffff);
-    this.hpPreviewText.text = "";
+    this.healthView.setPreview("", 0xffffff);
     this.slain.push(card);
 
     if (card.data.value === 2) {
@@ -872,28 +707,12 @@ export class BoardView extends Container {
     AudioJuice.discard();
     this.room = this.room.filter((c) => c !== card);
     card.setPreview("", 0xffffff);
-    this.hpPreviewText.text = "";
+    this.healthView.setPreview("", 0xffffff);
     this.discard.push(card);
   }
 
   private hasMonstersLeft(): boolean {
     return [...this.deck, ...this.room].some((c) => c.data.type === "monster");
-  }
-
-  private updateHealthUI(): void {
-    if (this.gameState === "scoring" || this.gameState === "gameover") return;
-    this.hpValueText.text = `${this.health}`;
-    if (this.health > 13) {
-      this.baseHpColor = GameConfig.colors.ui.healthGreen;
-    } else if (this.health > 6) {
-      this.baseHpColor = GameConfig.colors.ui.healthOrange;
-    } else {
-      this.baseHpColor = GameConfig.colors.ui.healthRed;
-    }
-
-    if (this.hpEffectTimer <= 0) {
-      this.hpValueText.tint = this.baseHpColor;
-    }
   }
 
   private advanceTurn(): void {
@@ -903,7 +722,6 @@ export class BoardView extends Container {
     this.cardsPlayedThisTurn++;
     this.canAvoid = true;
     this.updateAvoidButtonState();
-    this.updateHealthUI();
 
     if (this.health <= 0) {
       this.triggerDefeat();
@@ -921,7 +739,7 @@ export class BoardView extends Container {
     this.gameState = "scoring";
     this.room.forEach((c) => c.setSelectable(false));
     this.deck.forEach((c) => c.setSelectable(false));
-    this.skipContainer.visible = false;
+    this.hudView.visible = false;
 
     if (this.weapon) {
       this.weapon.setHighlight(false);
@@ -969,7 +787,7 @@ export class BoardView extends Container {
   private triggerVictory(): void {
     this.gameState = "scoring";
     this.room.forEach((c) => c.setSelectable(false));
-    this.skipContainer.visible = false;
+    this.hudView.visible = false;
 
     let finalScore = this.health;
     if (this.health === 20) {
@@ -1036,9 +854,8 @@ export class BoardView extends Container {
     this.gameState = "gameover";
     this.isGameOverAnimating = true;
 
-    this.hpLabelText.visible = false;
-    this.hpPreviewText.visible = false;
-    this.hpContainer.zIndex = 1000;
+    this.healthView.hideLabels();
+    this.healthView.zIndex = 1000;
 
     const cx = this.screenWidth / 2;
     const cy = this.screenHeight / 2;
@@ -1066,21 +883,14 @@ export class BoardView extends Container {
           AudioJuice.scoreTick();
           lastScoreInt = currentScore;
         }
-        this.hpValueText.text = `${currentScore}`;
-        if (currentScore > 13) {
-          this.hpValueText.tint = GameConfig.colors.ui.healthGreen;
-        } else if (currentScore > 6) {
-          this.hpValueText.tint = GameConfig.colors.ui.healthOrange;
-        } else {
-          this.hpValueText.tint = GameConfig.colors.ui.healthRed;
-        }
+        this.healthView.setHealth(currentScore);
       },
     );
 
-    await this.tween(this.hpContainer, { x: cx, y: cy }, 600, easeOutQuad);
+    await this.tween(this.healthView, { x: cx, y: cy }, 600, easeOutQuad);
 
     await this.tween(
-      this.hpContainer.scale,
+      this.healthView.scale,
       { x: this.globalScale * 2.5, y: this.globalScale * 2.5 },
       400,
       easeOutQuad,
@@ -1095,7 +905,7 @@ export class BoardView extends Container {
     this.overlay.zIndex = 900;
 
     const slamPromise = this.tween(
-      this.hpContainer.scale,
+      this.healthView.scale,
       { x: this.globalScale * 0.7, y: this.globalScale * 0.7 },
       150,
       easeInExpo,
@@ -1156,7 +966,7 @@ export class BoardView extends Container {
     this.addChild(resultText);
 
     await this.tween(
-      this.hpContainer.scale,
+      this.healthView.scale,
       { x: this.globalScale * 1.2, y: this.globalScale * 1.2 },
       800,
       easeOutBack,
@@ -1174,17 +984,20 @@ export class BoardView extends Container {
     );
 
     if (!this.isGameOverAnimating) {
-      this.hpContainer.position.set(
+      this.healthView.position.set(
         160 * this.globalScale,
         this.screenHeight - 160 * this.globalScale,
       );
-      this.hpContainer.scale.set(this.globalScale);
+      this.healthView.scale.set(this.globalScale);
     }
 
-    this.skipContainer.position.set(centerX, centerY - spacing * 1.8);
-    this.skipContainer.scale.set(this.globalScale);
-
-    this.helpBtn.position.set(this.screenWidth - 60, this.screenHeight - 60);
+    this.hudView.resize(
+      this.screenWidth,
+      this.screenHeight,
+      this.globalScale,
+      centerX,
+      centerY - spacing * 1.8,
+    );
 
     let z = 10;
 
@@ -1245,11 +1058,29 @@ export class BoardView extends Container {
     this.fistsZone.scale.set(this.globalScale);
     this.fistsZone.zIndex = 300;
 
+    if (this.hoveredWeapon) {
+      this.weaponGhost.visible = true;
+      this.weaponGhost.position.set(weaponBaseX, weaponBaseY);
+      this.weaponGhost.scale.set(this.globalScale);
+      this.weaponGhost.zIndex = 200;
+    } else {
+      this.weaponGhost.visible = false;
+      this.weaponDiscardIcon.visible = false;
+    }
+
     if (this.weapon) {
+      let targetWeaponX = weaponBaseX;
+
+      if (this.hoveredWeapon) {
+        targetWeaponX = weaponBaseX - spacing * 1.2;
+        this.weaponDiscardIcon.visible = true;
+        this.weaponDiscardIcon.scale.set(this.globalScale);
+      }
+
       this.slain.forEach((card, i) => {
         card.globalScale = this.globalScale;
         card.targetX =
-          weaponBaseX +
+          targetWeaponX +
           ((GameConfig.card.height - GameConfig.card.width) / 2) *
             this.globalScale;
         card.targetY = weaponBaseY;
@@ -1259,7 +1090,7 @@ export class BoardView extends Container {
       });
 
       this.weapon.globalScale = this.globalScale;
-      this.weapon.targetX = weaponBaseX;
+      this.weapon.targetX = targetWeaponX;
       this.weapon.targetY = weaponBaseY;
       this.weapon.targetRotation = 0;
 
