@@ -1,6 +1,7 @@
 import { Container, Text, TextStyle, Graphics } from "pixi.js";
 import { CardView } from "./CardView";
 import { GameConfig } from "../data/GameConfig";
+import { AudioManager } from "../core/AudioManager";
 
 export class BoardView extends Container {
   private deck: CardView[] = [];
@@ -126,6 +127,7 @@ export class BoardView extends Container {
     this.skipBtnBg.on("pointerdown", () => this.onAvoidClicked());
     this.skipBtnBg.on("pointerenter", () => {
       if (this.skipBtnBg.eventMode === "static") {
+        AudioManager.play("hover", 50);
         this.skipBtnBg
           .clear()
           .roundRect(-100, -25, 200, 50, 8)
@@ -169,7 +171,10 @@ export class BoardView extends Container {
 
     this.fistsZone = this.createTargetZone("FISTS");
     this.fistsZone.on("pointerdown", () => this.onFistsZoneClicked());
-    this.fistsZone.on("pointerenter", () => this.onFistsHoverEnter());
+    this.fistsZone.on("pointerenter", () => {
+      AudioManager.play("hover", 50);
+      this.onFistsHoverEnter();
+    });
     this.fistsZone.on("pointerleave", () => this.onFistsHoverLeave());
     this.addChild(this.fistsZone);
 
@@ -286,10 +291,12 @@ export class BoardView extends Container {
   }
 
   private dealRoom(): void {
+    AudioManager.play("new_room");
     while (this.room.length < 4 && this.deck.length > 0) {
       const card = this.deck.pop()!;
       this.room.push(card);
       card.flip(true);
+      AudioManager.play("draw", 50);
     }
     this.roomCount++;
     this.roomText.text = `ROOM: ${this.roomCount}`;
@@ -363,6 +370,8 @@ export class BoardView extends Container {
       return;
 
     this.canAvoid = false;
+    AudioManager.play("skip");
+    AudioManager.play("deck_return");
 
     for (let i = this.room.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -557,15 +566,24 @@ export class BoardView extends Container {
 
   private usePotion(card: CardView): void {
     if (this.potionsUsedThisTurn < 1) {
-      this.health = Math.min(20, this.health + card.data.value);
+      const gained = Math.min(card.data.value, 20 - this.health);
+      this.health += gained;
       this.potionsUsedThisTurn++;
+
+      if (gained === 0) AudioManager.play("heal_zero");
+      else if (this.health === 20) AudioManager.play("heal_full");
+      else AudioManager.play("heal_partial");
+    } else {
+      AudioManager.play("heal_zero");
     }
     this.discardCard(card);
     this.advanceTurn();
   }
 
   private equipWeapon(card: CardView): void {
+    AudioManager.play("equip");
     if (this.weapon) {
+      AudioManager.play("weapon_discard");
       this.weapon.setHighlight(false);
       this.discard.push(this.weapon, ...this.slain);
       this.slain = [];
@@ -579,6 +597,7 @@ export class BoardView extends Container {
   }
 
   private fightBarehanded(card: CardView): void {
+    AudioManager.play("damage");
     this.health -= card.data.value;
     this.discardCard(card);
     this.advanceTurn();
@@ -591,12 +610,19 @@ export class BoardView extends Container {
     this.health -= damage;
     this.lastSlainValue = card.data.value;
 
+    if (damage > 0) {
+      AudioManager.play("damage_reduced");
+    } else {
+      AudioManager.play("enemy_die");
+    }
+
     this.room = this.room.filter((c) => c !== card);
     card.setPreview("", 0);
     this.hpPreviewText.text = "";
     this.slain.push(card);
 
     if (card.data.value === 2) {
+      AudioManager.play("weapon_discard");
       this.weapon.setHighlight(false);
       this.discard.push(this.weapon, ...this.slain);
       this.weapon = null;
@@ -611,6 +637,7 @@ export class BoardView extends Container {
     card.setPreview("", 0);
     this.hpPreviewText.text = "";
     this.discard.push(card);
+    AudioManager.play("discard", 50);
   }
 
   private hasMonstersLeft(): boolean {
@@ -639,6 +666,7 @@ export class BoardView extends Container {
     this.updateHealthUI();
 
     if (this.health <= 0) {
+      AudioManager.play("die");
       this.triggerDefeat();
     } else if (!this.hasMonstersLeft()) {
       this.triggerVictory();
@@ -681,12 +709,14 @@ export class BoardView extends Container {
         this.scoringMonsters.push(card);
         card.flip(true);
         finalScore -= card.data.value;
+        AudioManager.play("draw", 60);
         this.updateLayout();
         await new Promise((r) =>
           setTimeout(r, GameConfig.juice.scoringDelayMonster ?? 75),
         );
       } else {
         this.discard.push(card);
+        AudioManager.play("discard", 60);
         this.updateLayout();
         await new Promise((r) =>
           setTimeout(r, GameConfig.juice.scoringDelayDiscard ?? 25),
@@ -767,6 +797,8 @@ export class BoardView extends Container {
     this.gameState = "gameover";
     this.isGameOverAnimating = true;
 
+    AudioManager.play(result === "VICTORY" ? "victory" : "defeat");
+
     this.hpLabelText.visible = false;
     this.hpPreviewText.visible = false;
     this.hpContainer.zIndex = 1000;
@@ -792,6 +824,9 @@ export class BoardView extends Container {
       (t) => t,
       () => {
         const currentScore = Math.round(scoreObj.val);
+        if (this.hpValueText.text !== `${currentScore}`) {
+          AudioManager.play("score_tick", 40);
+        }
         this.hpValueText.text = `${currentScore}`;
         if (currentScore > 13) {
           this.hpValueText.style.fill = GameConfig.colors.ui.healthGreen;
@@ -835,6 +870,7 @@ export class BoardView extends Container {
     );
 
     await Promise.all([slamPromise, overlayPromise]);
+    AudioManager.play("impact");
 
     const scoreLabel = new Text({
       text: "SCORE",

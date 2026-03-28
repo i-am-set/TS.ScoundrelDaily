@@ -2,7 +2,8 @@ import { Application } from "pixi.js";
 import { CardView } from "../view/CardView";
 import { BoardView } from "../view/BoardView";
 import { GameConfig } from "../data/GameConfig";
-import type { CardData, Suit, Rank, CardType } from "../data/CardData";
+import { AudioManager } from "./AudioManager";
+import type { CardData, Suit, Rank } from "../data/CardData";
 
 export class GameApp {
   public app: Application;
@@ -23,6 +24,8 @@ export class GameApp {
 
     document.body.appendChild(this.app.canvas);
     this.app.stage.sortableChildren = true;
+
+    await AudioManager.init();
 
     this.createScoundrelGame();
   }
@@ -69,7 +72,6 @@ export class GameApp {
       return parseInt(rank);
     };
 
-    // Monsters (Clubs & Spades: 2-A)
     ["clubs", "spades"].forEach((suit) => {
       ranks.forEach((rank) => {
         deck.push({
@@ -82,7 +84,6 @@ export class GameApp {
       });
     });
 
-    // Weapons (Diamonds: 2-10) & Potions (Hearts: 2-10)
     const redRanks: Rank[] = ["2", "3", "4", "5", "6", "7", "8", "9", "10"];
 
     redRanks.forEach((rank) => {

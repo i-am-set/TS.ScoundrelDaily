@@ -1,4 +1,7 @@
 export const GameConfig = {
+  audio: {
+    masterVolume: 0.5,
+  },
   colors: {
     background: 0x1e293b,
     cardBackground: 0xf8fafc,

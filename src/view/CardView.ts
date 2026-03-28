@@ -8,6 +8,7 @@ import {
   FederatedPointerEvent,
 } from "pixi.js";
 import { GameConfig } from "../data/GameConfig";
+import { AudioManager } from "../core/AudioManager";
 import type { CardData } from "../data/CardData";
 
 export class CardView extends Container {
@@ -111,6 +112,7 @@ export class CardView extends Container {
     this.on("pointerdown", (e: FederatedPointerEvent) => {
       e.stopPropagation();
       if (this.isSelectable) {
+        AudioManager.play("click", 50);
         this.emit("cardClicked", this);
       }
     });
@@ -250,6 +252,7 @@ export class CardView extends Container {
 
   private onPointerEnter(): void {
     if (!this.isSelectable || this.isFocused) return;
+    AudioManager.play("hover", 50);
     this.hoverGlow.visible = true;
     this.targetScale = GameConfig.juice.scaleHover ?? 1.05;
     this.targetShadowY = GameConfig.juice.shadowYHover ?? 16;
