@@ -746,7 +746,7 @@ export class BoardView extends Container {
     this.gameState = "scoring";
     this.room.forEach((c) => c.setSelectable(false));
     this.deck.forEach((c) => c.setSelectable(false));
-    this.hudView.setSkipEnabled(false);
+    this.hudView.hideGameControls();
 
     if (this.weapon) {
       this.weapon.setHighlight(false);
@@ -800,7 +800,7 @@ export class BoardView extends Container {
   private triggerVictory(): void {
     this.gameState = "scoring";
     this.room.forEach((c) => c.setSelectable(false));
-    this.hudView.setSkipEnabled(false);
+    this.hudView.hideGameControls();
 
     let finalScore = this.health;
     if (this.health === 20) {
@@ -836,7 +836,7 @@ export class BoardView extends Container {
     highScore: number,
   ): void {
     this.gameState = "gameover";
-    this.hudView.setSkipEnabled(false);
+    this.hudView.hideGameControls();
     this.helpModal.hide();
 
     this.deck.forEach((c) => (c.visible = false));
@@ -848,30 +848,7 @@ export class BoardView extends Container {
     this.deckCountText.visible = false;
     this.discardCountText.visible = false;
 
-    this.playGameOverAnimation(result, score, score);
-    this.showStats(streak, highScore);
-  }
-
-  public showStats(streak: number, highScore: number): void {
-    const cx = this.screenWidth / 2;
-    const cy = this.screenHeight / 2;
-    const statsText = new Text({
-      text: `STREAK: ${streak}   HIGH SCORE: ${highScore}`,
-      style: new TextStyle({
-        fontFamily: "Outfit",
-        fontSize: 24,
-        fontWeight: "bold",
-        fill: GameConfig.colors.textLight,
-        stroke: { color: 0x000000, width: 4 },
-      }),
-    });
-    statsText.anchor.set(0.5);
-    statsText.position.set(cx, cy + 120 * this.globalScale);
-    statsText.zIndex = 1000;
-    statsText.alpha = 0;
-    this.addChild(statsText);
-
-    this.tween(statsText, { alpha: 1 }, 500);
+    this.playGameOverAnimation(result, 0, score, streak, highScore, true);
   }
 
   private async tween(
@@ -911,6 +888,9 @@ export class BoardView extends Container {
     result: string,
     startScore: number,
     finalScore: number,
+    streak?: number,
+    highScore?: number,
+    skipIntroTween: boolean = false,
   ): Promise<void> {
     this.gameState = "gameover";
     this.isGameOverAnimating = true;
@@ -930,7 +910,7 @@ export class BoardView extends Container {
     };
 
     const scoreObj = { val: startScore };
-    const totalDuration = 600 + 400 + 150;
+    const totalDuration = skipIntroTween ? 1000 : 600 + 400 + 150;
     let lastScoreInt = Math.round(startScore);
 
     this.tween(
@@ -948,14 +928,19 @@ export class BoardView extends Container {
       },
     );
 
-    await this.tween(this.healthView, { x: cx, y: cy }, 600, easeOutQuad);
-
-    await this.tween(
-      this.healthView.scale,
-      { x: this.globalScale * 2.5, y: this.globalScale * 2.5 },
-      400,
-      easeOutQuad,
-    );
+    if (skipIntroTween) {
+      this.healthView.position.set(cx, cy);
+      this.healthView.scale.set(this.globalScale * 2.5);
+      await new Promise((r) => setTimeout(r, 850));
+    } else {
+      await this.tween(this.healthView, { x: cx, y: cy }, 600, easeOutQuad);
+      await this.tween(
+        this.healthView.scale,
+        { x: this.globalScale * 2.5, y: this.globalScale * 2.5 },
+        400,
+        easeOutQuad,
+      );
+    }
 
     this.overlay
       .clear()
@@ -989,7 +974,27 @@ export class BoardView extends Container {
       setTimeout(() => AudioJuice.defeat(), 200);
     }
 
+    const resultY = cy - 180 * this.globalScale;
+
     if (this.currentMode === "daily") {
+      const d = new Date();
+      const dateStr = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+
+      const dateText = new Text({
+        text: dateStr,
+        style: new TextStyle({
+          fontFamily: "Outfit",
+          fontSize: 18,
+          fontWeight: "bold",
+          fill: GameConfig.colors.ui.healthGray,
+          letterSpacing: 2,
+        }),
+      });
+      dateText.anchor.set(0.5);
+      dateText.position.set(cx, resultY * 0.35);
+      dateText.zIndex = 1000;
+      this.addChild(dateText);
+
       const dungeonText = new Text({
         text: `DUNGEON #${Random.getDungeonNumber()}`,
         style: new TextStyle({
@@ -1002,7 +1007,7 @@ export class BoardView extends Container {
         }),
       });
       dungeonText.anchor.set(0.5);
-      dungeonText.position.set(cx, cy - 240 * this.globalScale);
+      dungeonText.position.set(cx, resultY * 0.65);
       dungeonText.zIndex = 1000;
       this.addChild(dungeonText);
     }
@@ -1040,9 +1045,29 @@ export class BoardView extends Container {
       }),
     });
     resultText.anchor.set(0.5);
-    resultText.position.set(cx, cy - 180 * this.globalScale);
+    resultText.position.set(cx, resultY);
     resultText.zIndex = 1000;
     this.addChild(resultText);
+
+    if (streak !== undefined && highScore !== undefined) {
+      const statsText = new Text({
+        text: `STREAK: ${streak}   HIGH SCORE: ${highScore}`,
+        style: new TextStyle({
+          fontFamily: "Outfit",
+          fontSize: 24,
+          fontWeight: "bold",
+          fill: GameConfig.colors.textLight,
+          stroke: { color: 0x000000, width: 4 },
+        }),
+      });
+      statsText.anchor.set(0.5);
+      statsText.position.set(cx, cy + 120 * this.globalScale);
+      statsText.zIndex = 1000;
+      statsText.alpha = 0;
+      this.addChild(statsText);
+
+      this.tween(statsText, { alpha: 1 }, 500);
+    }
 
     await this.tween(
       this.healthView.scale,

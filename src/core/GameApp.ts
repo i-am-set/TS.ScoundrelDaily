@@ -87,7 +87,12 @@ export class GameApp {
       if (this.currentMode === "daily") {
         DailyTracker.saveResult(data.result, data.score);
         const save = DailyTracker.load();
-        this.board.showStats(save.streak, save.highScore);
+        this.board.showAlreadyPlayed(
+          data.result,
+          data.score,
+          save.streak,
+          save.highScore,
+        );
       }
     });
 

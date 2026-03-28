@@ -1,11 +1,13 @@
 import { Container, Text, TextStyle, Graphics, Ticker } from "pixi.js";
 import { GameConfig } from "../data/GameConfig";
+import { Random } from "../utils/Random";
 
 export class HUDView extends Container {
   private skipContainer: Container;
   private skipBtnBg: Graphics;
   private skipText: Text;
   private roomText: Text;
+  private dateText: Text;
   private skipStrikethrough: Graphics;
 
   private helpBtn: Container;
@@ -21,6 +23,20 @@ export class HUDView extends Container {
     super();
 
     this.skipContainer = new Container();
+
+    this.dateText = new Text({
+      text: "",
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 16,
+        fontWeight: "bold",
+        fill: GameConfig.colors.ui.healthGray,
+        letterSpacing: 2,
+      }),
+    });
+    this.dateText.anchor.set(0.5, 1);
+    this.dateText.y = -60;
+    this.skipContainer.addChild(this.dateText);
 
     this.roomText = new Text({
       text: "ROOM: 1",
@@ -169,6 +185,13 @@ export class HUDView extends Container {
   public setMode(mode: "daily" | "infinity"): void {
     this.modeText.text = mode === "daily" ? "∞" : "📅";
     this.resetBtn.visible = mode === "infinity";
+
+    if (mode === "daily") {
+      const d = new Date();
+      this.dateText.text = `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+    } else {
+      this.dateText.text = "INFINITE";
+    }
   }
 
   public updateRoom(roomCount: number): void {
@@ -200,6 +223,10 @@ export class HUDView extends Container {
       ? GameConfig.colors.ui.avoidActive
       : GameConfig.colors.ui.avoidDisabled;
     this.skipStrikethrough.visible = !isEnabled;
+  }
+
+  public hideGameControls(): void {
+    this.skipContainer.visible = false;
   }
 
   public resize(
