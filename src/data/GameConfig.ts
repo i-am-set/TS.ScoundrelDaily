@@ -3,37 +3,45 @@ export const GameConfig = {
     masterVolume: 0.5,
   },
   colors: {
-    background: 0x1e293b,
-    cardBackground: 0xf8fafc,
-    cardBack: 0x0f172a,
-    cardStroke: 0x94a3b8,
+    background: 0x0f172a,
+    cardBackground: 0xe2e8f0,
+    cardBack: 0x1e293b,
+    cardStroke: 0x64748b,
     cardShadow: 0x000000,
-    textLight: 0xf1f5f9,
+    textLight: 0xf8fafc,
+
     ui: {
-      healthRed: 0xef4444,
-      healthGreen: 0x22c55e,
-      healthOrange: 0xd9bb3d,
+      healthRed: 0xf87171,
+      healthGreen: 0x4ade80,
+      healthOrange: 0xfbbf24,
       healthGray: 0x94a3b8,
+
       avoidActive: 0xfacc15,
-      avoidDisabled: 0x64748b,
-      highlight: 0x22d3ee,
+      avoidDisabled: 0x475569,
+
+      highlight: 0x38bdf8,
       hoverHighlight: 0xfacc15,
-      overlay: 0x0f172a,
-      buttonBg: 0x334155,
-      buttonHover: 0x475569,
+
+      overlay: 0x020617,
+
+      buttonBg: 0x1e293b,
+      buttonHover: 0x334155,
     },
+
     suits: {
-      hearts: 0xe11d48,
-      diamonds: 0x7bc043,
-      spades: 0x334155,
-      clubs: 0x334155,
+      hearts: 0xef4444,
+      diamonds: 0x22c55e,
+      spades: 0x0f172a,
+      clubs: 0x0f172a,
     },
   },
+
   card: {
     width: 140,
     height: 196,
     radius: 12,
   },
+
   juice: {
     scaleNormal: 1.0,
     scaleHover: 1.05,
