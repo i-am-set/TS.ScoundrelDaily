@@ -5,6 +5,7 @@ import { HUDView } from "./HUDView";
 import { GameConfig } from "../data/GameConfig";
 import { AudioJuice } from "../utils/AudioJuice";
 import { HowToPlayModal } from "./HowToPlayModal";
+import { Random } from "../utils/Random";
 
 export class BoardView extends Container {
   private deck: CardView[] = [];
@@ -22,6 +23,7 @@ export class BoardView extends Container {
   private lastSlainValue: number = 99;
   private gameState: "playing" | "scoring" | "gameover" | "dealing" = "dealing";
   private isGameOverAnimating: boolean = false;
+  private currentMode: "daily" | "infinity" = "daily";
 
   private screenWidth: number = 0;
   private screenHeight: number = 0;
@@ -74,6 +76,7 @@ export class BoardView extends Container {
     this.addChild(this.healthView);
 
     this.hudView = new HUDView();
+    this.hudView.zIndex = 1500;
     this.hudView.on("skipClicked", () => this.onAvoidClicked());
     this.hudView.on("helpClicked", () => {
       AudioJuice.click();
@@ -125,6 +128,7 @@ export class BoardView extends Container {
   }
 
   public setMode(mode: "daily" | "infinity"): void {
+    this.currentMode = mode;
     this.hudView.setMode(mode);
   }
 
@@ -270,7 +274,7 @@ export class BoardView extends Container {
     return container;
   }
 
-  public initCards(cards: CardView[]): void {
+  public initCards(cards: CardView[], skipModal: boolean = false): void {
     this.deck = cards;
 
     for (let i = this.deck.length - 1; i > 0; i--) {
@@ -286,12 +290,16 @@ export class BoardView extends Container {
       card.position.set(-500, -500);
     });
 
-    this.helpModal.once("closed", () => {
-      if (this.gameState === "dealing") {
-        this.dealRoom();
-      }
-    });
-    this.helpModal.show();
+    if (skipModal) {
+      this.dealRoom();
+    } else {
+      this.helpModal.once("closed", () => {
+        if (this.gameState === "dealing") {
+          this.dealRoom();
+        }
+      });
+      this.helpModal.show();
+    }
   }
 
   public resize(width: number, height: number): void {
@@ -738,7 +746,7 @@ export class BoardView extends Container {
     this.gameState = "scoring";
     this.room.forEach((c) => c.setSelectable(false));
     this.deck.forEach((c) => c.setSelectable(false));
-    this.hudView.visible = false;
+    this.hudView.setSkipEnabled(false);
 
     if (this.weapon) {
       this.weapon.setHighlight(false);
@@ -792,7 +800,7 @@ export class BoardView extends Container {
   private triggerVictory(): void {
     this.gameState = "scoring";
     this.room.forEach((c) => c.setSelectable(false));
-    this.hudView.visible = false;
+    this.hudView.setSkipEnabled(false);
 
     let finalScore = this.health;
     if (this.health === 20) {
@@ -828,7 +836,7 @@ export class BoardView extends Container {
     highScore: number,
   ): void {
     this.gameState = "gameover";
-    this.hudView.visible = false;
+    this.hudView.setSkipEnabled(false);
     this.helpModal.hide();
 
     this.deck.forEach((c) => (c.visible = false));
@@ -979,6 +987,24 @@ export class BoardView extends Container {
       setTimeout(() => AudioJuice.victory(), 200);
     } else {
       setTimeout(() => AudioJuice.defeat(), 200);
+    }
+
+    if (this.currentMode === "daily") {
+      const dungeonText = new Text({
+        text: `DUNGEON #${Random.getDungeonNumber()}`,
+        style: new TextStyle({
+          fontFamily: "Outfit",
+          fontSize: 24,
+          fontWeight: "bold",
+          fill: GameConfig.colors.ui.avoidActive,
+          letterSpacing: 4,
+          stroke: { color: 0x000000, width: 4 },
+        }),
+      });
+      dungeonText.anchor.set(0.5);
+      dungeonText.position.set(cx, cy - 240 * this.globalScale);
+      dungeonText.zIndex = 1000;
+      this.addChild(dungeonText);
     }
 
     const scoreLabel = new Text({

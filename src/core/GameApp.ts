@@ -93,20 +93,26 @@ export class GameApp {
 
     const deck = this.generateScoundrelDeck();
     const cardViews = deck.map((data) => new CardView(data));
-    this.board.initCards(cardViews);
 
-    this.board.resize(window.innerWidth, window.innerHeight);
-
+    let skipModal = false;
     if (mode === "daily") {
       const save = DailyTracker.load();
       if (save.todayResult) {
-        this.board.showAlreadyPlayed(
-          save.todayResult,
-          save.todayScore!,
-          save.streak,
-          save.highScore,
-        );
+        skipModal = true;
       }
+    }
+
+    this.board.initCards(cardViews, skipModal);
+    this.board.resize(window.innerWidth, window.innerHeight);
+
+    if (mode === "daily" && skipModal) {
+      const save = DailyTracker.load();
+      this.board.showAlreadyPlayed(
+        save.todayResult!,
+        save.todayScore!,
+        save.streak,
+        save.highScore,
+      );
     }
   }
 

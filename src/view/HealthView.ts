@@ -91,7 +91,34 @@ export class HealthView extends Container {
   }
 
   public setHealth(health: number): void {
-    this.hpValueText.text = `${health}`;
+    if (health < 0) {
+      this.hpValueText.text = `${Math.abs(health)}`;
+      const minus = new Text({
+        text: "-",
+        style: this.hpValueText.style,
+      });
+      minus.anchor.set(1, 0.5);
+      minus.position.set(-this.hpValueText.width / 2 - 5, 0);
+
+      const existingMinus = this.hpValueText.children.find(
+        (c) => c.name === "minusSign",
+      );
+      if (existingMinus) {
+        existingMinus.destroy();
+      }
+
+      minus.name = "minusSign";
+      this.hpValueText.addChild(minus);
+    } else {
+      this.hpValueText.text = `${health}`;
+      const existingMinus = this.hpValueText.children.find(
+        (c) => c.name === "minusSign",
+      );
+      if (existingMinus) {
+        existingMinus.destroy();
+      }
+    }
+
     if (health > 13) {
       this.baseHpColor = GameConfig.colors.ui.healthGreen;
     } else if (health > 6) {
@@ -102,6 +129,10 @@ export class HealthView extends Container {
 
     if (this.hpEffectTimer <= 0) {
       this.hpValueText.tint = this.baseHpColor;
+      const existingMinus = this.hpValueText.children.find(
+        (c) => c.name === "minusSign",
+      ) as Text;
+      if (existingMinus) existingMinus.tint = this.baseHpColor;
     }
   }
 
@@ -221,13 +252,23 @@ export class HealthView extends Container {
     if (this.hpEffectTimer > 0) {
       this.hpEffectTimer -= ticker.deltaMS;
       const isWhite = Math.floor(this.hpEffectTimer / 50) % 2 === 0;
-      if (this.hpEffectType === "damage") {
-        this.hpValueText.tint = isWhite ? 0xffffff : 0xff0000;
-      } else if (this.hpEffectType === "heal") {
-        this.hpValueText.tint = isWhite ? 0xffffff : 0x00ff00;
-      }
+      const color = isWhite
+        ? 0xffffff
+        : this.hpEffectType === "damage"
+          ? 0xff0000
+          : 0x00ff00;
+
+      this.hpValueText.tint = color;
+      const existingMinus = this.hpValueText.children.find(
+        (c) => c.name === "minusSign",
+      ) as Text;
+      if (existingMinus) existingMinus.tint = color;
     } else {
       this.hpValueText.tint = this.baseHpColor;
+      const existingMinus = this.hpValueText.children.find(
+        (c) => c.name === "minusSign",
+      ) as Text;
+      if (existingMinus) existingMinus.tint = this.baseHpColor;
     }
 
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {

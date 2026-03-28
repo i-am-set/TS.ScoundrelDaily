@@ -15,15 +15,22 @@ export class Random {
   public static getDailySeed(): number {
     const d = new Date();
     const dateString = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-    let hash = 0;
+    let hash = 2166136261;
     for (let i = 0; i < dateString.length; i++) {
-      hash = (Math.imul(31, hash) + dateString.charCodeAt(i)) | 0;
+      hash = Math.imul(hash ^ dateString.charCodeAt(i), 16777619);
     }
-    return hash;
+    return hash >>> 0;
   }
 
   public static getTodayString(): string {
     const d = new Date();
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
+  public static getDungeonNumber(): number {
+    const start = new Date(2025, 11, 15);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - start.getTime());
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
   }
 }
