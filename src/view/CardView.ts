@@ -8,7 +8,6 @@ import {
   FederatedPointerEvent,
 } from "pixi.js";
 import { GameConfig } from "../data/GameConfig";
-import { AudioManager } from "../core/AudioManager";
 import type { CardData } from "../data/CardData";
 
 export class CardView extends Container {
@@ -93,7 +92,7 @@ export class CardView extends Container {
     this.previewText = new Text({
       text: "",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 36,
         fontWeight: "900",
         fill: 0xffffff,
@@ -112,7 +111,6 @@ export class CardView extends Container {
     this.on("pointerdown", (e: FederatedPointerEvent) => {
       e.stopPropagation();
       if (this.isSelectable) {
-        AudioManager.play("click", 50);
         this.emit("cardClicked", this);
       }
     });
@@ -135,7 +133,7 @@ export class CardView extends Container {
     container.addChild(background);
 
     const textStyle = new TextStyle({
-      fontFamily: "Arial",
+      fontFamily: "Outfit",
       fontSize: 24,
       fontWeight: "bold",
       fill: suitColor,
@@ -162,7 +160,7 @@ export class CardView extends Container {
     container.addChild(suitText);
 
     const centerStyle = new TextStyle({
-      fontFamily: "Arial",
+      fontFamily: "Outfit",
       fontSize: 64,
       fill: suitColor,
     });
@@ -215,7 +213,7 @@ export class CardView extends Container {
       return;
     }
     this.previewText.text = text;
-    this.previewText.style.fill = color;
+    this.previewText.tint = color;
     this.previewText.visible = true;
   }
 
@@ -252,7 +250,6 @@ export class CardView extends Container {
 
   private onPointerEnter(): void {
     if (!this.isSelectable || this.isFocused) return;
-    AudioManager.play("hover", 50);
     this.hoverGlow.visible = true;
     this.targetScale = GameConfig.juice.scaleHover ?? 1.05;
     this.targetShadowY = GameConfig.juice.shadowYHover ?? 16;

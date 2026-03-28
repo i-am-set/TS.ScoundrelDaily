@@ -2,8 +2,8 @@ import { Application } from "pixi.js";
 import { CardView } from "../view/CardView";
 import { BoardView } from "../view/BoardView";
 import { GameConfig } from "../data/GameConfig";
-import { AudioManager } from "./AudioManager";
-import type { CardData, Suit, Rank } from "../data/CardData";
+import { AudioJuice } from "../utils/AudioJuice";
+import type { CardData, Suit, Rank, CardType } from "../data/CardData";
 
 export class GameApp {
   public app: Application;
@@ -14,6 +14,14 @@ export class GameApp {
   }
 
   public async init(): Promise<void> {
+    try {
+      await document.fonts.load('10pt "Outfit"');
+      await document.fonts.load('bold 10pt "Outfit"');
+      await document.fonts.load('900 10pt "Outfit"');
+    } catch (e) {
+      console.warn("Font loading failed or timed out, proceeding anyway.", e);
+    }
+
     await this.app.init({
       resizeTo: window,
       resolution: Math.max(window.devicePixelRatio, 2),
@@ -25,7 +33,13 @@ export class GameApp {
     document.body.appendChild(this.app.canvas);
     this.app.stage.sortableChildren = true;
 
-    await AudioManager.init();
+    window.addEventListener(
+      "pointerdown",
+      () => {
+        AudioJuice.init();
+      },
+      { once: true },
+    );
 
     this.createScoundrelGame();
   }

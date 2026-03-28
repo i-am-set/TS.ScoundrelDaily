@@ -1,7 +1,18 @@
-import { Container, Text, TextStyle, Graphics } from "pixi.js";
+import { Container, Text, TextStyle, Graphics, Ticker } from "pixi.js";
 import { CardView } from "./CardView";
 import { GameConfig } from "../data/GameConfig";
-import { AudioManager } from "../core/AudioManager";
+import { AudioJuice } from "../utils/AudioJuice";
+import { HowToPlayModal } from "./HowToPlayModal";
+
+interface FloatingText {
+  text: Text;
+  life: number;
+  maxLife: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
 
 export class BoardView extends Container {
   private deck: CardView[] = [];
@@ -42,9 +53,33 @@ export class BoardView extends Container {
   private deckCountText: Text;
   private discardCountText: Text;
 
+  private damageFlashOverlay: Graphics;
+  private shakeTimer: number = 0;
+  private shakeIntensity: number = 0;
+  private hpSpringV: number = 0;
+  private hpScale: number = 1;
+  private hpRotV: number = 0;
+  private hpRot: number = 0;
+  private hpEffectTimer: number = 0;
+  private hpEffectType: "damage" | "heal" | "none" = "none";
+  private baseHpColor: number = GameConfig.colors.ui.healthGreen;
+  private floatingTexts: FloatingText[] = [];
+
+  private helpBtn: Container;
+  private helpModal: HowToPlayModal;
+
   constructor() {
     super();
     this.sortableChildren = true;
+
+    this.damageFlashOverlay = new Graphics()
+      .rect(0, 0, 10000, 10000)
+      .fill({ color: 0xffffff, alpha: 1 });
+    this.damageFlashOverlay.alpha = 0;
+    this.damageFlashOverlay.visible = false;
+    this.damageFlashOverlay.zIndex = 450;
+    this.damageFlashOverlay.eventMode = "none";
+    this.addChild(this.damageFlashOverlay);
 
     this.overlay = new Graphics()
       .rect(0, 0, 10000, 10000)
@@ -60,7 +95,7 @@ export class BoardView extends Container {
     this.hpLabelText = new Text({
       text: "HP",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 48,
         fontWeight: "bold",
         fill: GameConfig.colors.textLight,
@@ -75,23 +110,24 @@ export class BoardView extends Container {
     this.hpValueText = new Text({
       text: "20",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 128,
         fontWeight: "900",
-        fill: GameConfig.colors.ui.healthGreen,
+        fill: 0xffffff,
         stroke: { color: 0x000000, width: 8 },
       }),
     });
+    this.hpValueText.tint = GameConfig.colors.ui.healthGreen;
     this.hpValueText.anchor.set(0.5, 0.5);
     this.hpContainer.addChild(this.hpValueText);
 
     this.hpPreviewText = new Text({
       text: "",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 40,
         fontWeight: "bold",
-        fill: GameConfig.colors.ui.healthGreen,
+        fill: 0xffffff,
         stroke: { color: 0x000000, width: 5 },
       }),
     });
@@ -106,7 +142,7 @@ export class BoardView extends Container {
     this.roomText = new Text({
       text: "ROOM: 1",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 20,
         fontWeight: "bold",
         fill: GameConfig.colors.textLight,
@@ -127,7 +163,6 @@ export class BoardView extends Container {
     this.skipBtnBg.on("pointerdown", () => this.onAvoidClicked());
     this.skipBtnBg.on("pointerenter", () => {
       if (this.skipBtnBg.eventMode === "static") {
-        AudioManager.play("hover", 50);
         this.skipBtnBg
           .clear()
           .roundRect(-100, -25, 200, 50, 8)
@@ -149,7 +184,7 @@ export class BoardView extends Container {
     this.skipText = new Text({
       text: "SKIP ROOM",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 20,
         fontWeight: "900",
         fill: GameConfig.colors.ui.avoidActive,
@@ -171,17 +206,14 @@ export class BoardView extends Container {
 
     this.fistsZone = this.createTargetZone("FISTS");
     this.fistsZone.on("pointerdown", () => this.onFistsZoneClicked());
-    this.fistsZone.on("pointerenter", () => {
-      AudioManager.play("hover", 50);
-      this.onFistsHoverEnter();
-    });
+    this.fistsZone.on("pointerenter", () => this.onFistsHoverEnter());
     this.fistsZone.on("pointerleave", () => this.onFistsHoverLeave());
     this.addChild(this.fistsZone);
 
     this.deckCountText = new Text({
       text: "0",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 24,
         fontWeight: "bold",
         fill: GameConfig.colors.textLight,
@@ -194,7 +226,7 @@ export class BoardView extends Container {
     this.discardCountText = new Text({
       text: "0",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 24,
         fontWeight: "bold",
         fill: GameConfig.colors.textLight,
@@ -203,6 +235,194 @@ export class BoardView extends Container {
     });
     this.discardCountText.anchor.set(0.5, 0);
     this.addChild(this.discardCountText);
+
+    this.helpBtn = new Container();
+    const helpBg = new Graphics()
+      .circle(0, 0, 24)
+      .fill({ color: GameConfig.colors.ui.buttonBg })
+      .stroke({ width: 2, color: GameConfig.colors.textLight });
+    this.helpBtn.addChild(helpBg);
+    const helpText = new Text({
+      text: "?",
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 28,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+      }),
+    });
+    helpText.anchor.set(0.5);
+    this.helpBtn.addChild(helpText);
+    this.helpBtn.eventMode = "static";
+    this.helpBtn.cursor = "pointer";
+    this.helpBtn.zIndex = 1000;
+    this.helpBtn.on("pointerdown", () => {
+      AudioJuice.click();
+      this.helpModal.show();
+    });
+    this.addChild(this.helpBtn);
+
+    this.helpModal = new HowToPlayModal(window.innerWidth, window.innerHeight);
+    this.addChild(this.helpModal);
+
+    Ticker.shared.add(this.update, this);
+  }
+
+  private update(ticker: Ticker): void {
+    const dt = ticker.deltaTime;
+
+    if (this.shakeTimer > 0) {
+      this.shakeTimer -= ticker.deltaMS;
+      const mag = this.shakeIntensity * (Math.max(0, this.shakeTimer) / 150);
+      this.pivot.set((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+      if (this.shakeTimer <= 0) this.pivot.set(0, 0);
+    }
+
+    if (this.damageFlashOverlay.alpha > 0) {
+      this.damageFlashOverlay.alpha -= 0.01 * dt;
+      if (this.damageFlashOverlay.alpha <= 0) {
+        this.damageFlashOverlay.visible = false;
+        this.damageFlashOverlay.alpha = 0;
+      }
+    }
+
+    const tension = 0.15;
+    const dampening = 0.75;
+
+    this.hpSpringV += (1 - this.hpScale) * tension;
+    this.hpSpringV *= dampening;
+    this.hpScale += this.hpSpringV;
+    this.hpValueText.scale.set(this.hpScale);
+
+    this.hpRotV += (0 - this.hpRot) * tension;
+    this.hpRotV *= dampening;
+    this.hpRot += this.hpRotV;
+    this.hpValueText.rotation = this.hpRot;
+
+    if (this.hpEffectTimer > 0) {
+      this.hpEffectTimer -= ticker.deltaMS;
+      const isWhite = Math.floor(this.hpEffectTimer / 50) % 2 === 0;
+      if (this.hpEffectType === "damage") {
+        this.hpValueText.tint = isWhite ? 0xffffff : 0xff0000;
+      } else if (this.hpEffectType === "heal") {
+        this.hpValueText.tint = isWhite ? 0xffffff : 0x00ff00;
+      }
+    } else {
+      this.hpValueText.tint = this.baseHpColor;
+    }
+
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = this.floatingTexts[i];
+      ft.life -= ticker.deltaMS;
+      ft.x += ft.vx * dt;
+      ft.y += ft.vy * dt;
+      ft.text.position.set(ft.x, ft.y);
+      ft.text.alpha = Math.max(0, ft.life / ft.maxLife);
+      if (ft.life <= 0) {
+        ft.text.destroy();
+        this.floatingTexts.splice(i, 1);
+      }
+    }
+  }
+
+  private spawnFloatingText(
+    str: string,
+    strokeColor: number,
+    fillColor: number,
+  ): void {
+    const text = new Text({
+      text: str,
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 64,
+        fontWeight: "900",
+        fill: fillColor,
+        stroke: { color: strokeColor, width: 6 },
+        dropShadow: { alpha: 0.3, blur: 4, color: 0x000000, distance: 4 },
+      }),
+    });
+    text.anchor.set(0.5);
+    text.zIndex = 850;
+    text.scale.set(this.globalScale);
+
+    const startX =
+      this.hpContainer.x + (Math.random() - 0.5) * 40 * this.globalScale;
+    const startY = this.hpContainer.y - 60 * this.globalScale;
+    text.position.set(startX, startY);
+
+    this.addChild(text);
+
+    this.floatingTexts.push({
+      text,
+      life: 1200,
+      maxLife: 1200,
+      x: startX,
+      y: startY,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: -2.5 - Math.random() * 1.5,
+    });
+  }
+
+  private takeDamage(amount: number): void {
+    if (amount <= 0) return;
+    this.health -= amount;
+
+    if (this.health <= 0) {
+      AudioJuice.dying();
+    } else {
+      AudioJuice.damage();
+    }
+
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate([50, 50, 50]);
+    }
+
+    this.shakeTimer = 150;
+    this.shakeIntensity = Math.min(amount + 2, 10);
+
+    this.damageFlashOverlay.alpha = 0.3;
+    this.damageFlashOverlay.visible = true;
+
+    this.hpScale = 1.5;
+    this.hpRot = (Math.random() > 0.5 ? 1 : -1) * 0.2;
+
+    this.hpEffectTimer = 300;
+    this.hpEffectType = "damage";
+
+    this.spawnFloatingText(
+      `-${amount}`,
+      0x000000,
+      GameConfig.colors.ui.healthRed,
+    );
+    this.updateHealthUI();
+  }
+
+  private heal(amount: number, isFull: boolean): void {
+    if (amount <= 0) return;
+    this.health = Math.min(20, this.health + amount);
+
+    if (isFull) {
+      AudioJuice.healFull();
+    } else {
+      AudioJuice.healPartial();
+    }
+
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      navigator.vibrate(40);
+    }
+
+    this.hpScale = 1.3;
+    this.hpRot = (Math.random() > 0.5 ? 1 : -1) * 0.1;
+
+    this.hpEffectTimer = 300;
+    this.hpEffectType = "heal";
+
+    this.spawnFloatingText(
+      `+${amount}`,
+      0x000000,
+      GameConfig.colors.ui.healthGreen,
+    );
+    this.updateHealthUI();
   }
 
   private createTargetZone(label: string): Container {
@@ -237,7 +457,7 @@ export class BoardView extends Container {
       const text = new Text({
         text: label,
         style: new TextStyle({
-          fontFamily: "Arial",
+          fontFamily: "Outfit",
           fontSize: 24,
           fontWeight: "bold",
           fill: GameConfig.colors.ui.highlight,
@@ -277,6 +497,7 @@ export class BoardView extends Container {
     });
 
     this.dealRoom();
+    this.helpModal.show();
   }
 
   public resize(width: number, height: number): void {
@@ -287,17 +508,26 @@ export class BoardView extends Container {
     const baseHeight = 800;
     this.globalScale = Math.min(width / baseWidth, height / baseHeight, 1.5);
 
+    this.helpModal.resize(width, height);
     this.updateLayout();
   }
 
   private dealRoom(): void {
-    AudioManager.play("new_room");
+    let dealt = false;
     while (this.room.length < 4 && this.deck.length > 0) {
       const card = this.deck.pop()!;
       this.room.push(card);
       card.flip(true);
-      AudioManager.play("draw", 50);
+      dealt = true;
     }
+
+    if (dealt) {
+      AudioJuice.draw();
+      if (this.roomCount > 0) {
+        setTimeout(() => AudioJuice.newRoom(), 200);
+      }
+    }
+
     this.roomCount++;
     this.roomText.text = `ROOM: ${this.roomCount}`;
     this.cardsPlayedThisTurn = 0;
@@ -366,12 +596,15 @@ export class BoardView extends Container {
       !this.canAvoid ||
       this.room.length < 4 ||
       this.cardsPlayedThisTurn > 0
-    )
+    ) {
+      AudioJuice.error();
       return;
+    }
+
+    AudioJuice.skipRoom();
+    setTimeout(() => AudioJuice.deckReturn(), 150);
 
     this.canAvoid = false;
-    AudioManager.play("skip");
-    AudioManager.play("deck_return");
 
     for (let i = this.room.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -390,12 +623,12 @@ export class BoardView extends Container {
     const damage = this.focusedCard.data.value;
     this.focusedCard.setPreview(`-${damage}`, GameConfig.colors.ui.healthRed);
     this.hpPreviewText.text = `-${damage}`;
-    this.hpPreviewText.style.fill = GameConfig.colors.ui.healthRed;
+    this.hpPreviewText.tint = GameConfig.colors.ui.healthRed;
   }
 
   private onFistsHoverLeave(): void {
     if (!this.focusedCard) return;
-    this.focusedCard.setPreview("", 0);
+    this.focusedCard.setPreview("", 0xffffff);
     this.hpPreviewText.text = "";
   }
 
@@ -417,7 +650,7 @@ export class BoardView extends Container {
             : GameConfig.colors.ui.healthGray;
         this.focusedCard.setPreview(`-${damage}`, color);
         this.hpPreviewText.text = `-${damage}`;
-        this.hpPreviewText.style.fill = color;
+        this.hpPreviewText.tint = color;
       }
       return;
     }
@@ -425,10 +658,12 @@ export class BoardView extends Container {
     if (this.focusedCard) return;
     if (!this.room.includes(card)) return;
 
+    AudioJuice.hover();
+
     if (card.data.type === "monster") {
       card.setPreview(`-${card.data.value}`, GameConfig.colors.ui.healthRed);
       this.hpPreviewText.text = `-${card.data.value}`;
-      this.hpPreviewText.style.fill = GameConfig.colors.ui.healthRed;
+      this.hpPreviewText.tint = GameConfig.colors.ui.healthRed;
 
       if (this.weapon && !this.focusedCard) {
         if (card.data.value < this.lastSlainValue) {
@@ -441,21 +676,21 @@ export class BoardView extends Container {
       if (this.potionsUsedThisTurn >= 1) {
         card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
         this.hpPreviewText.text = `+0`;
-        this.hpPreviewText.style.fill = GameConfig.colors.ui.healthGray;
+        this.hpPreviewText.tint = GameConfig.colors.ui.healthGray;
       } else {
         const gained = Math.min(card.data.value, 20 - this.health);
         if (gained === 0) {
           card.setPreview(`+0`, GameConfig.colors.ui.healthGray);
           this.hpPreviewText.text = `+0`;
-          this.hpPreviewText.style.fill = GameConfig.colors.ui.healthGray;
+          this.hpPreviewText.tint = GameConfig.colors.ui.healthGray;
         } else if (gained < card.data.value) {
           card.setPreview(`+${gained}`, GameConfig.colors.ui.healthOrange);
           this.hpPreviewText.text = `+${gained}`;
-          this.hpPreviewText.style.fill = GameConfig.colors.ui.healthOrange;
+          this.hpPreviewText.tint = GameConfig.colors.ui.healthOrange;
         } else {
           card.setPreview(`+${gained}`, GameConfig.colors.ui.healthGreen);
           this.hpPreviewText.text = `+${gained}`;
-          this.hpPreviewText.style.fill = GameConfig.colors.ui.healthGreen;
+          this.hpPreviewText.tint = GameConfig.colors.ui.healthGreen;
         }
       }
     }
@@ -463,14 +698,14 @@ export class BoardView extends Container {
 
   private onCardHoverLeave(card: CardView): void {
     if (this.focusedCard && card === this.weapon) {
-      this.focusedCard.setPreview("", 0);
+      this.focusedCard.setPreview("", 0xffffff);
       this.hpPreviewText.text = "";
       return;
     }
 
     if (this.focusedCard) return;
 
-    card.setPreview("", 0);
+    card.setPreview("", 0xffffff);
     this.hpPreviewText.text = "";
 
     if (this.weapon && !this.focusedCard) {
@@ -483,6 +718,7 @@ export class BoardView extends Container {
 
     if (this.room.includes(card)) {
       if (this.focusedCard === card) {
+        AudioJuice.click();
         this.clearFocus();
         return;
       }
@@ -495,6 +731,7 @@ export class BoardView extends Container {
         if (!this.weapon || card.data.value >= this.lastSlainValue) {
           this.fightBarehanded(card);
         } else {
+          AudioJuice.click();
           this.focusCard(card);
         }
       }
@@ -522,7 +759,7 @@ export class BoardView extends Container {
     this.focusedCard = card;
     this.focusedCard.setFocused(true);
 
-    card.setPreview("", 0);
+    card.setPreview("", 0xffffff);
     this.hpPreviewText.text = "";
 
     this.overlay.visible = true;
@@ -566,30 +803,32 @@ export class BoardView extends Container {
 
   private usePotion(card: CardView): void {
     if (this.potionsUsedThisTurn < 1) {
-      const gained = Math.min(card.data.value, 20 - this.health);
-      this.health += gained;
+      const gained = Math.min(20 - this.health, card.data.value);
+      if (gained === card.data.value) {
+        this.heal(gained, true);
+      } else if (gained > 0) {
+        this.heal(gained, false);
+      } else {
+        AudioJuice.healZero();
+      }
       this.potionsUsedThisTurn++;
-
-      if (gained === 0) AudioManager.play("heal_zero");
-      else if (this.health === 20) AudioManager.play("heal_full");
-      else AudioManager.play("heal_partial");
     } else {
-      AudioManager.play("heal_zero");
+      AudioJuice.error();
     }
     this.discardCard(card);
     this.advanceTurn();
   }
 
   private equipWeapon(card: CardView): void {
-    AudioManager.play("equip");
+    AudioJuice.equipWeapon();
     if (this.weapon) {
-      AudioManager.play("weapon_discard");
+      AudioJuice.discardWeapon();
       this.weapon.setHighlight(false);
       this.discard.push(this.weapon, ...this.slain);
       this.slain = [];
     }
     this.room = this.room.filter((c) => c !== card);
-    card.setPreview("", 0);
+    card.setPreview("", 0xffffff);
     this.hpPreviewText.text = "";
     this.weapon = card;
     this.lastSlainValue = 99;
@@ -597,8 +836,7 @@ export class BoardView extends Container {
   }
 
   private fightBarehanded(card: CardView): void {
-    AudioManager.play("damage");
-    this.health -= card.data.value;
+    this.takeDamage(card.data.value);
     this.discardCard(card);
     this.advanceTurn();
   }
@@ -607,22 +845,20 @@ export class BoardView extends Container {
     if (!this.weapon || card.data.value >= this.lastSlainValue) return;
 
     const damage = Math.max(0, card.data.value - this.weapon.data.value);
-    this.health -= damage;
+    if (damage > 0) {
+      this.takeDamage(damage);
+    } else {
+      AudioJuice.enemyDying();
+    }
     this.lastSlainValue = card.data.value;
 
-    if (damage > 0) {
-      AudioManager.play("damage_reduced");
-    } else {
-      AudioManager.play("enemy_die");
-    }
-
     this.room = this.room.filter((c) => c !== card);
-    card.setPreview("", 0);
+    card.setPreview("", 0xffffff);
     this.hpPreviewText.text = "";
     this.slain.push(card);
 
     if (card.data.value === 2) {
-      AudioManager.play("weapon_discard");
+      AudioJuice.discardWeapon();
       this.weapon.setHighlight(false);
       this.discard.push(this.weapon, ...this.slain);
       this.weapon = null;
@@ -633,11 +869,11 @@ export class BoardView extends Container {
   }
 
   private discardCard(card: CardView): void {
+    AudioJuice.discard();
     this.room = this.room.filter((c) => c !== card);
-    card.setPreview("", 0);
+    card.setPreview("", 0xffffff);
     this.hpPreviewText.text = "";
     this.discard.push(card);
-    AudioManager.play("discard", 50);
   }
 
   private hasMonstersLeft(): boolean {
@@ -648,11 +884,15 @@ export class BoardView extends Container {
     if (this.gameState === "scoring" || this.gameState === "gameover") return;
     this.hpValueText.text = `${this.health}`;
     if (this.health > 13) {
-      this.hpValueText.style.fill = GameConfig.colors.ui.healthGreen;
+      this.baseHpColor = GameConfig.colors.ui.healthGreen;
     } else if (this.health > 6) {
-      this.hpValueText.style.fill = GameConfig.colors.ui.healthOrange;
+      this.baseHpColor = GameConfig.colors.ui.healthOrange;
     } else {
-      this.hpValueText.style.fill = GameConfig.colors.ui.healthRed;
+      this.baseHpColor = GameConfig.colors.ui.healthRed;
+    }
+
+    if (this.hpEffectTimer <= 0) {
+      this.hpValueText.tint = this.baseHpColor;
     }
   }
 
@@ -666,7 +906,6 @@ export class BoardView extends Container {
     this.updateHealthUI();
 
     if (this.health <= 0) {
-      AudioManager.play("die");
       this.triggerDefeat();
     } else if (!this.hasMonstersLeft()) {
       this.triggerVictory();
@@ -708,15 +947,15 @@ export class BoardView extends Container {
       if (card.data.type === "monster") {
         this.scoringMonsters.push(card);
         card.flip(true);
+        AudioJuice.draw();
         finalScore -= card.data.value;
-        AudioManager.play("draw", 60);
         this.updateLayout();
         await new Promise((r) =>
           setTimeout(r, GameConfig.juice.scoringDelayMonster ?? 75),
         );
       } else {
         this.discard.push(card);
-        AudioManager.play("discard", 60);
+        AudioJuice.discard();
         this.updateLayout();
         await new Promise((r) =>
           setTimeout(r, GameConfig.juice.scoringDelayDiscard ?? 25),
@@ -797,8 +1036,6 @@ export class BoardView extends Container {
     this.gameState = "gameover";
     this.isGameOverAnimating = true;
 
-    AudioManager.play(result === "VICTORY" ? "victory" : "defeat");
-
     this.hpLabelText.visible = false;
     this.hpPreviewText.visible = false;
     this.hpContainer.zIndex = 1000;
@@ -816,6 +1053,7 @@ export class BoardView extends Container {
 
     const scoreObj = { val: startScore };
     const totalDuration = 600 + 400 + 150;
+    let lastScoreInt = Math.round(startScore);
 
     this.tween(
       scoreObj,
@@ -824,16 +1062,17 @@ export class BoardView extends Container {
       (t) => t,
       () => {
         const currentScore = Math.round(scoreObj.val);
-        if (this.hpValueText.text !== `${currentScore}`) {
-          AudioManager.play("score_tick", 40);
+        if (currentScore !== lastScoreInt) {
+          AudioJuice.scoreTick();
+          lastScoreInt = currentScore;
         }
         this.hpValueText.text = `${currentScore}`;
         if (currentScore > 13) {
-          this.hpValueText.style.fill = GameConfig.colors.ui.healthGreen;
+          this.hpValueText.tint = GameConfig.colors.ui.healthGreen;
         } else if (currentScore > 6) {
-          this.hpValueText.style.fill = GameConfig.colors.ui.healthOrange;
+          this.hpValueText.tint = GameConfig.colors.ui.healthOrange;
         } else {
-          this.hpValueText.style.fill = GameConfig.colors.ui.healthRed;
+          this.hpValueText.tint = GameConfig.colors.ui.healthRed;
         }
       },
     );
@@ -870,12 +1109,19 @@ export class BoardView extends Container {
     );
 
     await Promise.all([slamPromise, overlayPromise]);
-    AudioManager.play("impact");
+
+    AudioJuice.scoreSlam();
+
+    if (result === "VICTORY") {
+      setTimeout(() => AudioJuice.victory(), 200);
+    } else {
+      setTimeout(() => AudioJuice.defeat(), 200);
+    }
 
     const scoreLabel = new Text({
       text: "SCORE",
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 32,
         fontWeight: "bold",
         fill: 0xffffff,
@@ -891,7 +1137,7 @@ export class BoardView extends Container {
     const resultText = new Text({
       text: result,
       style: new TextStyle({
-        fontFamily: "Arial",
+        fontFamily: "Outfit",
         fontSize: 80,
         fontWeight: "900",
         fill:
@@ -937,6 +1183,8 @@ export class BoardView extends Container {
 
     this.skipContainer.position.set(centerX, centerY - spacing * 1.8);
     this.skipContainer.scale.set(this.globalScale);
+
+    this.helpBtn.position.set(this.screenWidth - 60, this.screenHeight - 60);
 
     let z = 10;
 
@@ -1042,5 +1290,10 @@ export class BoardView extends Container {
         card.setShadowVisible(true);
       });
     }
+  }
+
+  public destroy(options?: any): void {
+    Ticker.shared.remove(this.update, this);
+    super.destroy(options);
   }
 }
