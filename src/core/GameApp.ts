@@ -3,7 +3,7 @@ import { CardView } from "../view/CardView";
 import { BoardView } from "../view/BoardView";
 import { GameConfig } from "../data/GameConfig";
 import { AudioJuice } from "../utils/AudioJuice";
-import type { CardData, Suit, Rank, CardType } from "../data/CardData";
+import type { CardData, Suit, Rank } from "../data/CardData";
 
 export class GameApp {
   public app: Application;
