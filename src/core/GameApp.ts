@@ -3,11 +3,14 @@ import { CardView } from "../view/CardView";
 import { BoardView } from "../view/BoardView";
 import { GameConfig } from "../data/GameConfig";
 import { AudioJuice } from "../utils/AudioJuice";
+import { Random } from "../utils/Random";
+import { DailyTracker } from "../utils/DailyTracker";
 import type { CardData, Suit, Rank } from "../data/CardData";
 
 export class GameApp {
   public app: Application;
   private board!: BoardView;
+  private currentMode: "daily" | "infinity" = "daily";
 
   constructor() {
     this.app = new Application();
@@ -41,23 +44,70 @@ export class GameApp {
       { once: true },
     );
 
-    this.createScoundrelGame();
+    window.addEventListener("resize", () => {
+      if (this.board) {
+        this.board.resize(window.innerWidth, window.innerHeight);
+      }
+    });
+
+    this.startGame("daily");
   }
 
-  private createScoundrelGame(): void {
-    const deck = this.generateScoundrelDeck();
+  private startGame(mode: "daily" | "infinity"): void {
+    if (this.board) {
+      this.board.destroy({ children: true });
+      this.app.stage.removeChild(this.board);
+    }
 
-    this.board = new BoardView();
+    this.currentMode = mode;
+    let rng: () => number;
+
+    if (mode === "daily") {
+      const random = new Random(Random.getDailySeed());
+      rng = () => random.next();
+    } else {
+      rng = () => Math.random();
+    }
+
+    this.board = new BoardView(rng);
+    this.board.setMode(mode);
     this.app.stage.addChild(this.board);
 
+    this.board.on("modeToggle", () => {
+      AudioJuice.click();
+      this.startGame(this.currentMode === "daily" ? "infinity" : "daily");
+    });
+
+    this.board.on("resetGame", () => {
+      AudioJuice.click();
+      if (this.currentMode === "infinity") this.startGame("infinity");
+    });
+
+    this.board.on("gameEnd", (data) => {
+      if (this.currentMode === "daily") {
+        DailyTracker.saveResult(data.result, data.score);
+        const save = DailyTracker.load();
+        this.board.showStats(save.streak, save.highScore);
+      }
+    });
+
+    const deck = this.generateScoundrelDeck();
     const cardViews = deck.map((data) => new CardView(data));
     this.board.initCards(cardViews);
 
     this.board.resize(window.innerWidth, window.innerHeight);
 
-    window.addEventListener("resize", () => {
-      this.board.resize(window.innerWidth, window.innerHeight);
-    });
+    if (mode === "daily") {
+      const save = DailyTracker.load();
+      if (save.todayResult) {
+        this.board.showAlreadyPlayed(
+          save.todayResult,
+          save.todayScore!,
+          save.streak,
+          save.highScore,
+        );
+      }
+    }
   }
 
   private generateScoundrelDeck(): CardData[] {

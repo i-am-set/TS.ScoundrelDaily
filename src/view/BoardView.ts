@@ -27,6 +27,8 @@ export class BoardView extends Container {
   private screenHeight: number = 0;
   private globalScale: number = 1;
 
+  private rng: () => number;
+
   private healthView: HealthView;
   private hudView: HUDView;
 
@@ -45,8 +47,9 @@ export class BoardView extends Container {
 
   private helpModal: HowToPlayModal;
 
-  constructor() {
+  constructor(rng: () => number) {
     super();
+    this.rng = rng;
     this.sortableChildren = true;
 
     this.damageFlashOverlay = new Graphics()
@@ -76,6 +79,8 @@ export class BoardView extends Container {
       AudioJuice.click();
       this.helpModal.show();
     });
+    this.hudView.on("modeClicked", () => this.emit("modeToggle"));
+    this.hudView.on("resetClicked", () => this.emit("resetGame"));
     this.addChild(this.hudView);
 
     this.fistsZone = this.createTargetZone("FISTS");
@@ -117,6 +122,10 @@ export class BoardView extends Container {
     this.addChild(this.helpModal);
 
     Ticker.shared.add(this.update, this);
+  }
+
+  public setMode(mode: "daily" | "infinity"): void {
+    this.hudView.setMode(mode);
   }
 
   private update(ticker: Ticker): void {
@@ -265,7 +274,7 @@ export class BoardView extends Container {
     this.deck = cards;
 
     for (let i = this.deck.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(this.rng() * (i + 1));
       [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
     }
 
@@ -278,7 +287,9 @@ export class BoardView extends Container {
     });
 
     this.helpModal.once("closed", () => {
-      this.dealRoom();
+      if (this.gameState === "dealing") {
+        this.dealRoom();
+      }
     });
     this.helpModal.show();
   }
@@ -398,7 +409,7 @@ export class BoardView extends Container {
     this.canAvoid = false;
 
     for (let i = this.room.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(this.rng() * (i + 1));
       [this.room[i], this.room[j]] = [this.room[j], this.room[i]];
     }
 
@@ -748,6 +759,12 @@ export class BoardView extends Container {
     );
 
     let finalScore = this.health;
+    const remainingMonsters = this.deck.filter(
+      (c) => c.data.type === "monster",
+    );
+    finalScore -= remainingMonsters.reduce((sum, c) => sum + c.data.value, 0);
+
+    this.emit("gameEnd", { result: "DEFEAT", score: finalScore });
 
     while (this.deck.length > 0) {
       const card = this.deck.pop()!;
@@ -755,7 +772,6 @@ export class BoardView extends Container {
         this.scoringMonsters.push(card);
         card.flip(true);
         AudioJuice.draw();
-        finalScore -= card.data.value;
         this.updateLayout();
         await new Promise((r) =>
           setTimeout(r, GameConfig.juice.scoringDelayMonster ?? 75),
@@ -786,6 +802,8 @@ export class BoardView extends Container {
       }
     }
 
+    this.emit("gameEnd", { result: "VICTORY", score: finalScore });
+
     if (this.weapon) {
       this.weapon.setHighlight(false);
       this.weapon.setDiscardIconVisible(false);
@@ -801,6 +819,51 @@ export class BoardView extends Container {
     this.updateLayout();
 
     this.playGameOverAnimation("VICTORY", this.health, finalScore);
+  }
+
+  public showAlreadyPlayed(
+    result: string,
+    score: number,
+    streak: number,
+    highScore: number,
+  ): void {
+    this.gameState = "gameover";
+    this.hudView.visible = false;
+    this.helpModal.hide();
+
+    this.deck.forEach((c) => (c.visible = false));
+    this.room.forEach((c) => (c.visible = false));
+    this.discard.forEach((c) => (c.visible = false));
+    if (this.weapon) this.weapon.visible = false;
+    this.slain.forEach((c) => (c.visible = false));
+    this.fistsZone.visible = false;
+    this.deckCountText.visible = false;
+    this.discardCountText.visible = false;
+
+    this.playGameOverAnimation(result, score, score);
+    this.showStats(streak, highScore);
+  }
+
+  public showStats(streak: number, highScore: number): void {
+    const cx = this.screenWidth / 2;
+    const cy = this.screenHeight / 2;
+    const statsText = new Text({
+      text: `STREAK: ${streak}   HIGH SCORE: ${highScore}`,
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 24,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+        stroke: { color: 0x000000, width: 4 },
+      }),
+    });
+    statsText.anchor.set(0.5);
+    statsText.position.set(cx, cy + 120 * this.globalScale);
+    statsText.zIndex = 1000;
+    statsText.alpha = 0;
+    this.addChild(statsText);
+
+    this.tween(statsText, { alpha: 1 }, 500);
   }
 
   private async tween(

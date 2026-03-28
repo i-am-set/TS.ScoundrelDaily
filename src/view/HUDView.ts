@@ -7,7 +7,11 @@ export class HUDView extends Container {
   private skipText: Text;
   private roomText: Text;
   private skipStrikethrough: Graphics;
+
   private helpBtn: Container;
+  private modeBtn: Container;
+  private modeText: Text;
+  private resetBtn: Container;
 
   private isSkipEnabled: boolean = false;
   private shakeTimer: number = 0;
@@ -109,7 +113,62 @@ export class HUDView extends Container {
     this.helpBtn.on("pointerdown", () => this.emit("helpClicked"));
     this.addChild(this.helpBtn);
 
+    this.modeBtn = new Container();
+    const modeBg = new Graphics()
+      .circle(0, 0, 24)
+      .fill({ color: GameConfig.colors.ui.buttonBg })
+      .stroke({ width: 2, color: GameConfig.colors.textLight });
+    this.modeBtn.addChild(modeBg);
+
+    this.modeText = new Text({
+      text: "∞",
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 28,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+      }),
+    });
+    this.modeText.anchor.set(0.5);
+    this.modeBtn.addChild(this.modeText);
+
+    this.modeBtn.eventMode = "static";
+    this.modeBtn.cursor = "pointer";
+    this.modeBtn.zIndex = 1000;
+    this.modeBtn.on("pointerdown", () => this.emit("modeClicked"));
+    this.addChild(this.modeBtn);
+
+    this.resetBtn = new Container();
+    const resetBg = new Graphics()
+      .circle(0, 0, 24)
+      .fill({ color: GameConfig.colors.ui.buttonBg })
+      .stroke({ width: 2, color: GameConfig.colors.textLight });
+    this.resetBtn.addChild(resetBg);
+
+    const resetText = new Text({
+      text: "↻",
+      style: new TextStyle({
+        fontFamily: "Outfit",
+        fontSize: 28,
+        fontWeight: "bold",
+        fill: GameConfig.colors.textLight,
+      }),
+    });
+    resetText.anchor.set(0.5);
+    this.resetBtn.addChild(resetText);
+
+    this.resetBtn.eventMode = "static";
+    this.resetBtn.cursor = "pointer";
+    this.resetBtn.zIndex = 1000;
+    this.resetBtn.on("pointerdown", () => this.emit("resetClicked"));
+    this.addChild(this.resetBtn);
+
     Ticker.shared.add(this.update, this);
+  }
+
+  public setMode(mode: "daily" | "infinity"): void {
+    this.modeText.text = mode === "daily" ? "∞" : "📅";
+    this.resetBtn.visible = mode === "infinity";
   }
 
   public updateRoom(roomCount: number): void {
@@ -152,7 +211,11 @@ export class HUDView extends Container {
   ): void {
     this.skipContainer.position.set(skipX, skipY);
     this.skipContainer.scale.set(globalScale);
-    this.helpBtn.position.set(width - 60, height - 60);
+
+    const safeRight = width - 40;
+    this.helpBtn.position.set(safeRight, height - 40);
+    this.modeBtn.position.set(safeRight, 40);
+    this.resetBtn.position.set(safeRight, 100);
   }
 
   private update(ticker: Ticker): void {
