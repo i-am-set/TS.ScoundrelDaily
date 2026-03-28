@@ -557,7 +557,12 @@ export class BoardView extends Container {
         return;
       }
 
-      if (isTouch && this.touchPreviewCard !== card) {
+      const opensMenu =
+        card.data.type === "monster" &&
+        this.weapon !== null &&
+        card.data.value < this.lastSlainValue;
+
+      if (isTouch && this.touchPreviewCard !== card && !opensMenu) {
         this.clearTouchPreview();
         this.touchPreviewCard = card;
         card.setForceHover(true);

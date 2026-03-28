@@ -11,6 +11,7 @@ interface TextSegment {
 export class HowToPlayModal extends Container {
   private overlay: Graphics;
   private panel: Graphics;
+  private targetScale: number = 1;
 
   constructor(screenWidth: number, screenHeight: number) {
     super();
@@ -202,17 +203,17 @@ export class HowToPlayModal extends Container {
   public show(): void {
     this.visible = true;
     this.alpha = 0;
-    this.panel.scale.set(0.8);
+    this.panel.scale.set(this.targetScale * 0.8);
 
     const animate = () => {
       this.alpha += (1 - this.alpha) * 0.2;
-      this.panel.scale.x += (1 - this.panel.scale.x) * 0.2;
-      this.panel.scale.y += (1 - this.panel.scale.y) * 0.2;
+      this.panel.scale.x += (this.targetScale - this.panel.scale.x) * 0.2;
+      this.panel.scale.y += (this.targetScale - this.panel.scale.y) * 0.2;
       if (this.alpha < 0.99) {
         requestAnimationFrame(animate);
       } else {
         this.alpha = 1;
-        this.panel.scale.set(this.panel.scale.x);
+        this.panel.scale.set(this.targetScale);
       }
     };
     animate();
@@ -221,8 +222,8 @@ export class HowToPlayModal extends Container {
   public hide(): void {
     const animate = () => {
       this.alpha += (0 - this.alpha) * 0.2;
-      this.panel.scale.x += (0.8 - this.panel.scale.x) * 0.2;
-      this.panel.scale.y += (0.8 - this.panel.scale.y) * 0.2;
+      this.panel.scale.x += (this.targetScale * 0.8 - this.panel.scale.x) * 0.2;
+      this.panel.scale.y += (this.targetScale * 0.8 - this.panel.scale.y) * 0.2;
       if (this.alpha > 0.01) {
         requestAnimationFrame(animate);
       } else {
@@ -242,8 +243,8 @@ export class HowToPlayModal extends Container {
 
     const safeWidth = width * 0.95;
     const safeHeight = height * 0.95;
-    const scale = Math.min(safeWidth / 700, safeHeight / 760, 1);
+    this.targetScale = Math.min(safeWidth / 700, safeHeight / 760, 1);
 
-    this.panel.scale.set(scale);
+    this.panel.scale.set(this.targetScale);
   }
 }
