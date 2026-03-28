@@ -26,7 +26,7 @@ export class HowToPlayModal extends Container {
     this.addChild(this.overlay);
 
     this.panel = new Graphics()
-      .roundRect(-240, -360, 480, 720, 16)
+      .roundRect(-350, -380, 700, 760, 16)
       .fill({ color: GameConfig.colors.background, alpha: 1 })
       .stroke({ width: 4, color: GameConfig.colors.ui.highlight });
     this.panel.eventMode = "static";
@@ -38,18 +38,18 @@ export class HowToPlayModal extends Container {
       text: "How to Play SCOUNDREL",
       style: new TextStyle({
         fontFamily: "Outfit",
-        fontSize: 26,
+        fontSize: 32,
         fontWeight: "900",
         fill: GameConfig.colors.ui.highlight,
         letterSpacing: 1,
       }),
     });
     title.anchor.set(0.5, 0);
-    title.position.set(0, -330);
+    title.position.set(0, -350);
     this.panel.addChild(title);
 
     const contentContainer = new Container();
-    contentContainer.position.set(-210, -270);
+    contentContainer.position.set(-310, -280);
     this.panel.addChild(contentContainer);
 
     const lines: TextSegment[][] = [
@@ -62,18 +62,15 @@ export class HowToPlayModal extends Container {
         },
         { text: "." },
       ],
-      [{ text: "• Each turn, flip cards until there are" }],
       [
-        { text: "  4 cards face up", bold: true },
+        { text: "• Each turn, flip cards until there are " },
+        { text: "4 cards face up", bold: true },
         { text: " (this is the Room)." },
       ],
       [
         { text: "• You can " },
         { text: "skip the Room", bold: true },
         { text: ", but " },
-      ],
-      [
-        { text: "  " },
         {
           text: "not twice in a row",
           color: GameConfig.colors.ui.healthRed,
@@ -84,9 +81,8 @@ export class HowToPlayModal extends Container {
       [
         { text: "• If you play the Room, pick " },
         { text: "3 of the 4 cards", bold: true },
-        { text: "," },
+        { text: ", one at a time." },
       ],
-      [{ text: "  one at a time." }],
       [],
       [
         {
@@ -95,9 +91,12 @@ export class HowToPlayModal extends Container {
           bold: true,
         },
       ],
-      [{ text: "    No weapon → lose full value in health." }],
-      [{ text: "    With weapon → lose the difference" }],
-      [{ text: "    (or 0 if weapon is stronger)." }],
+      [{ text: "    No weapon → lose its full value in health." }],
+      [
+        {
+          text: "    With a weapon → lose only the difference (or 0 if weapon is stronger).",
+        },
+      ],
       [],
       [
         {
@@ -106,7 +105,7 @@ export class HowToPlayModal extends Container {
           bold: true,
         },
       ],
-      [{ text: "    Equip it to replace your current weapon." }],
+      [{ text: "    You must equip it and replace your current weapon." }],
       [],
       [
         {
@@ -115,28 +114,24 @@ export class HowToPlayModal extends Container {
           bold: true,
         },
       ],
-      [{ text: "    Heals you (max 20). You can only use" }],
       [
-        { text: "    " },
+        { text: "    Heals you (max 20 health). You can only use " },
         { text: "one potion per turn", bold: true },
         { text: "." },
       ],
       [],
       [{ text: "• Weapons get weaker over time:", bold: true }],
       [
-        { text: "    After use, it can only fight " },
-        { text: "weaker", bold: true },
-      ],
-      [
-        { text: "    monsters", bold: true },
+        { text: "    After using one, it can only fight " },
+        { text: "weaker monsters", bold: true },
         { text: " than the last one it hit." },
       ],
       [],
       [
         { text: "• After choosing 3 cards, " },
         { text: "1 card stays", bold: true },
+        { text: " for the next turn." },
       ],
-      [{ text: "  for the next turn." }],
       [
         { text: "• You lose if your health hits " },
         { text: "0", color: GameConfig.colors.ui.healthRed, bold: true },
@@ -151,12 +146,13 @@ export class HowToPlayModal extends Container {
         },
         { text: "." },
       ],
+      [{ text: "• Your score = remaining health (or negative if you lose)." }],
     ];
 
     let currentY = 0;
     for (const line of lines) {
       if (line.length === 0) {
-        currentY += 12;
+        currentY += 15;
         continue;
       }
       const lineContainer = new Container();
@@ -177,7 +173,7 @@ export class HowToPlayModal extends Container {
       }
       lineContainer.y = currentY;
       contentContainer.addChild(lineContainer);
-      currentY += 22;
+      currentY += 28;
     }
 
     const clickToClose = new Text({
@@ -191,7 +187,7 @@ export class HowToPlayModal extends Container {
       }),
     });
     clickToClose.anchor.set(0.5);
-    clickToClose.position.set(0, 320);
+    clickToClose.position.set(0, 340);
     this.panel.addChild(clickToClose);
 
     this.resize(screenWidth, screenHeight);
@@ -244,9 +240,9 @@ export class HowToPlayModal extends Container {
       .fill({ color: 0x000000, alpha: 0.85 });
     this.panel.position.set(width / 2, height / 2);
 
-    const safeWidth = width * 0.9;
-    const safeHeight = height * 0.9;
-    const scale = Math.min(safeWidth / 480, safeHeight / 720, 1.2);
+    const safeWidth = width * 0.95;
+    const safeHeight = height * 0.95;
+    const scale = Math.min(safeWidth / 700, safeHeight / 760, 1);
 
     this.panel.scale.set(scale);
   }

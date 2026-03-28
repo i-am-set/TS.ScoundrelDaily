@@ -23,18 +23,18 @@ export class BoardView extends Container {
   private gameState: "playing" | "scoring" | "gameover" | "dealing" = "dealing";
   private isGameOverAnimating: boolean = false;
 
-  private touchPreviewCard: CardView | null = null;
-
   private screenWidth: number = 0;
   private screenHeight: number = 0;
   private globalScale: number = 1;
 
+  private bgCatch: Graphics;
   private healthView: HealthView;
   private hudView: HUDView;
 
   private overlay: Graphics;
   private focusedCard: CardView | null = null;
   private hoveredWeapon: CardView | null = null;
+  private touchPreviewCard: CardView | null = null;
   private fistsZone: Container;
   private weaponGhost: Container;
 
@@ -50,6 +50,14 @@ export class BoardView extends Container {
   constructor() {
     super();
     this.sortableChildren = true;
+
+    this.bgCatch = new Graphics()
+      .rect(-10000, -10000, 20000, 20000)
+      .fill({ color: 0xffffff, alpha: 0.001 });
+    this.bgCatch.eventMode = "static";
+    this.bgCatch.zIndex = -1;
+    this.bgCatch.on("pointerdown", () => this.clearTouchPreview());
+    this.addChild(this.bgCatch);
 
     this.damageFlashOverlay = new Graphics()
       .rect(0, 0, 10000, 10000)
@@ -297,9 +305,18 @@ export class BoardView extends Container {
     this.updateLayout();
   }
 
+  private clearTouchPreview(): void {
+    if (this.touchPreviewCard) {
+      const card = this.touchPreviewCard;
+      this.touchPreviewCard = null;
+      card.setForceHover(false);
+      this.onCardHoverLeave(card);
+    }
+  }
+
   private async dealRoom(): Promise<void> {
     this.gameState = "dealing";
-    this.touchPreviewCard = null;
+    this.clearTouchPreview();
     this.updateSelectableStates();
     this.updateAvoidButtonState();
 
@@ -386,7 +403,7 @@ export class BoardView extends Container {
     }
 
     this.gameState = "dealing";
-    this.touchPreviewCard = null;
+    this.clearTouchPreview();
     this.updateSelectableStates();
     this.updateAvoidButtonState();
 
@@ -541,16 +558,14 @@ export class BoardView extends Container {
       }
 
       if (isTouch && this.touchPreviewCard !== card) {
-        if (this.touchPreviewCard) {
-          this.onCardHoverLeave(this.touchPreviewCard);
-        }
+        this.clearTouchPreview();
         this.touchPreviewCard = card;
+        card.setForceHover(true);
         this.onCardHoverEnter(card);
         return;
       }
 
-      this.touchPreviewCard = null;
-      this.onCardHoverLeave(card);
+      this.clearTouchPreview();
 
       if (card.data.type === "potion") {
         this.usePotion(card);
@@ -568,6 +583,16 @@ export class BoardView extends Container {
     }
 
     if (this.focusedCard && this.weapon === card) {
+      if (isTouch && this.touchPreviewCard !== card) {
+        this.clearTouchPreview();
+        this.touchPreviewCard = card;
+        card.setForceHover(true);
+        this.onCardHoverEnter(card);
+        return;
+      }
+
+      this.clearTouchPreview();
+
       if (
         this.focusedCard.data.type === "monster" &&
         this.focusedCard.data.value < this.lastSlainValue
@@ -605,6 +630,8 @@ export class BoardView extends Container {
 
   private clearFocus(): void {
     if (!this.focusedCard) return;
+
+    this.clearTouchPreview();
 
     const old = this.focusedCard;
     this.focusedCard = null;
@@ -719,7 +746,7 @@ export class BoardView extends Container {
     if (this.gameState !== "playing") return;
 
     this.clearFocus();
-    this.touchPreviewCard = null;
+    this.clearTouchPreview();
     this.cardsPlayedThisTurn++;
     this.canAvoid = true;
     this.updateAvoidButtonState();
